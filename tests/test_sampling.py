@@ -47,8 +47,8 @@ def test_acceptance_falls_with_divergence(divergence: float, lo: float, hi: floa
 
 def test_identical_models_accept_everything() -> None:
     pair = MarkovPair.random(8, 0.0, seed=0)
-    # 60 tokens = exactly 10 full cycles of gamma + 1 = 6 tokens.
-    _, stats = speculative_sample(pair, 2000, 60, 5, np.random.default_rng(0))
+    # Every cycle emits gamma + 1 = 6 tokens, even the truncated last one.
+    _, stats = speculative_sample(pair, 2000, 20, 5, np.random.default_rng(0))
     assert stats["acceptance_rate"] == 1.0
     assert stats["tokens_per_cycle"] == pytest.approx(6.0)
 

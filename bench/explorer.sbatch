@@ -2,7 +2,10 @@
 # Slurm job for Northeastern's Explorer cluster (adapt partition/GRES elsewhere).
 #
 #   sbatch bench/explorer.sbatch
-#   sbatch --export=ALL,TARGET=Qwen/Qwen2.5-32B-Instruct,TAG=0.5b_32b bench/explorer.sbatch
+#   TARGET=Qwen/Qwen2.5-32B-Instruct TAG=0.5b_32b GAMMAS=1,2,3,4,6,8 sbatch bench/explorer.sbatch
+#
+# VENV selects the virtualenv (torch must be built for a CUDA version the
+# node's driver supports; Explorer's driver 545 needs cu12x wheels).
 #
 #SBATCH --job-name=specsim-bench
 #SBATCH --partition=gpu-short
@@ -17,7 +20,7 @@ WORK=${SPECSIM_WORK:-/scratch/$USER/specsim}
 DRAFT=${DRAFT:-Qwen/Qwen2.5-0.5B-Instruct}
 TARGET=${TARGET:-Qwen/Qwen2.5-7B-Instruct}
 TAG=${TAG:-0.5b_7b}
-EXTRA=${EXTRA:-}
+GAMMAS=${GAMMAS:-1,2,3,4,5,6,8}
 
 cd "$WORK"
 module load python/3.13.5
@@ -27,9 +30,9 @@ export HF_HUB_OFFLINE=1
 mkdir -p results
 
 nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv
-# shellcheck disable=SC2086
 python bench/spec_bench.py \
   --draft "$DRAFT" \
   --target "$TARGET" \
   --out "results/qwen2.5-${TAG}_${SLURM_JOB_ID}.json" \
-  --hf-reference $EXTRA
+  --gammas "$GAMMAS" \
+  --hf-reference

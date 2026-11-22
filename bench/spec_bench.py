@@ -148,14 +148,120 @@ def eos_ids(tok: Any) -> set[int]:
 
 
 # --------------------------------------------------------------------------
+# Model runner: eager (DynamicCache) or CUDA graphs (StaticCache + torch.compile)
+# --------------------------------------------------------------------------
+
+
+def _static_cache(model: Any, max_len: int, device: str, dtype: torch.dtype) -> Any:
+    from transformers import StaticCache
+
+    attempts: list[dict[str, Any]] = [
+        {"config": model.config, "max_cache_len": max_len},
+        {
+            "config": model.config,
+            "max_batch_size": 1,
+            "max_cache_len": max_len,
+            "device": device,
+            "dtype": dtype,
+        },
+    ]
+    for kwargs in attempts:
+        try:
+            return StaticCache(**kwargs)
+        except TypeError:
+            continue
+    raise RuntimeError("could not construct a StaticCache for this transformers version")
+
+
+class Runner:
+    """A model plus its KV cache, with explicit length tracking and rollback.
+
+    Eager mode uses a DynamicCache and truncates it on rollback. Graph mode
+    (``graphs=True``) uses a StaticCache and ``torch.compile(mode=
+    "reduce-overhead")``, which captures one CUDA graph per input shape, so a
+    decode step is a single graph launch instead of hundreds of kernel launches
+    from Python. Rollback in graph mode only moves the write position: slots
+    past it are masked out by ``cache_position`` and overwritten later.
+    Prefill always runs eagerly (variable length).
+    """
+
+    def __init__(self, model: Any, graphs: bool, max_len: int, device: str, dtype: torch.dtype):
+        self.model = model
+        self.graphs = graphs
+        self.device = device
+        self.length = 0
+        self.max_len = max_len
+        self.cache: Any = None
+        if graphs:
+            self.cache = _static_cache(model, max_len, device, dtype)
+            self.step = torch.compile(model.forward, mode="reduce-overhead", dynamic=False)
+
+    def reset(self) -> None:
+        self.length = 0
+        if self.graphs:
+            self.cache.reset()
+        else:
+            self.cache = None
+
+    def prefill(self, ids: torch.Tensor) -> None:
+        self.reset()
+        n = int(ids.shape[1])
+        if self.graphs:
+            pos = torch.arange(n, device=self.device)
+            self.model(ids, past_key_values=self.cache, cache_position=pos, use_cache=True)
+        else:
+            self.cache = self.model(ids, use_cache=True).past_key_values
+        self.length = n
+
+    def forward(self, tokens: list[int]) -> torch.Tensor:
+        """Append ``tokens``; return their logits ``(len(tokens), V)``.
+
+        The returned tensor may live in CUDA-graph memory: consume it before the
+        next ``forward`` call on this runner.
+        """
+        k = len(tokens)
+        if self.length + k > self.max_len:
+            raise RuntimeError(f"KV cache overflow ({self.length + k} > {self.max_len})")
+        x = torch.tensor([tokens], device=self.device)
+        if self.graphs:
+            pos = torch.arange(self.length, self.length + k, device=self.device)
+            out = self.step(
+                input_ids=x, past_key_values=self.cache, cache_position=pos, use_cache=True
+            )
+        else:
+            out = self.model(x, past_key_values=self.cache, use_cache=True)
+        self.length += k
+        logits: torch.Tensor = out.logits[0]
+        return logits
+
+    def rollback(self, length: int) -> None:
+        if length >= self.length:
+            return
+        if not self.graphs:
+            rollback(self.cache, length)
+        self.length = length
+
+    def warmup(self, shapes: list[int], ctx: int = 64) -> None:
+        """Compile and capture every decode shape before anything is timed."""
+        if not self.graphs:
+            return
+        ids = torch.randint(1000, 20000, (1, ctx), device=self.device)
+        for k in shapes:
+            for _ in range(3):  # cudagraph trees record on the 2nd/3rd call
+                self.prefill(ids)
+                self.forward([1000] * k)
+        self.reset()
+
+
+# --------------------------------------------------------------------------
 # Speculative decoding with KV-cache rollback
 # --------------------------------------------------------------------------
 
 
 @torch.inference_mode()
 def speculative_generate(
-    target: Any,
-    draft: Any | None,
+    target: Runner,
+    draft: Runner | None,
     prompt_ids: torch.Tensor,
     gamma: int,
     max_new: int,
@@ -179,13 +285,14 @@ def speculative_generate(
     dev = prompt_ids.device
     seq: list[int] = prompt_ids[0].tolist()
     n_prompt = len(seq)
+    use_draft = gamma > 0 and draft is not None
 
     sync()
     t_start = time.perf_counter()
-    t_cache = target(prompt_ids[:, :-1], use_cache=True).past_key_values
-    d_cache = None
-    if gamma > 0 and draft is not None:
-        d_cache = draft(prompt_ids[:, :-1], use_cache=True).past_key_values
+    target.prefill(prompt_ids[:, :-1])
+    if use_draft:
+        assert draft is not None
+        draft.prefill(prompt_ids[:, :-1])
     sync()
     t_prefill = time.perf_counter() - t_start
 
@@ -200,12 +307,12 @@ def speculative_generate(
         drafts: list[int] = []
         qs: list[torch.Tensor] = []
         if k > 0:
-            assert draft is not None and d_cache is not None
-            pending = seq[d_cache.get_seq_length() :]
+            assert draft is not None
+            # 1 pending token, or 2 after a fully accepted cycle (the last
+            # draft token was never fed to the draft model).
+            pending = seq[draft.length :]
             for _ in range(k):
-                logits = draft(
-                    torch.tensor([pending], device=dev), past_key_values=d_cache, use_cache=True
-                ).logits[0, -1, :vocab]
+                logits = draft.forward(pending)[-1, :vocab]
                 if temperature == 0:
                     x = int(torch.argmax(logits))
                 else:
@@ -216,10 +323,8 @@ def speculative_generate(
                 pending = [x]
 
         # ---- verify phase: ONE target pass over [last token] + drafts ----
-        t_in = seq[t_cache.get_seq_length() :] + drafts
-        logits = target(
-            torch.tensor([t_in], device=dev), past_key_values=t_cache, use_cache=True
-        ).logits[0, -(k + 1) :, :vocab]
+        t_in = seq[target.length :] + drafts
+        logits = target.forward(t_in)[-(k + 1) :, :vocab]
 
         n_acc = 0
         new_tok: int | None = None
@@ -249,21 +354,25 @@ def speculative_generate(
 
         base = len(seq)
         accepted = drafts[:n_acc]
+        trace = [k, n_acc]
         # Stop early if an accepted draft token is an end-of-sequence token.
+        # Record only the positions up to EOS: agreement after it is trivial.
         for j, x in enumerate(accepted):
             if x in stop:
                 accepted = accepted[: j + 1]
                 new_tok = None
+                trace = [j + 1, j + 1]
                 break
         seq.extend(accepted)
         if new_tok is not None:
             seq.append(new_tok)
-        cycles.append([k, n_acc])
+        cycles.append(trace)
 
         # ---- roll back both caches to the accepted prefix ----
-        rollback(t_cache, base + len(accepted))
-        if d_cache is not None:
-            rollback(d_cache, base + len(accepted))
+        target.rollback(base + len(accepted))
+        if use_draft:
+            assert draft is not None
+            draft.rollback(base + len(accepted))
 
     sync()
     t_total = time.perf_counter() - t_start
@@ -285,25 +394,25 @@ def speculative_generate(
 
 @torch.inference_mode()
 def profile_forward(
-    model: Any, ctx_len: int, ks: list[int], reps: int, device: str, vocab: int
+    runner: Runner, ctx_len: int, ks: list[int], reps: int, device: str, vocab: int
 ) -> dict[str, float]:
     """Median wall time (ms) of one forward pass appending k tokens to a cache."""
     g = torch.Generator(device="cpu").manual_seed(0)
     ids = torch.randint(1000, 20000, (1, ctx_len), generator=g).to(device)
-    cache = model(ids, use_cache=True).past_key_values
+    runner.prefill(ids)
     out: dict[str, float] = {}
     for k in ks:
-        x = torch.randint(1000, 20000, (1, k), generator=g).to(device)
+        x = torch.randint(1000, 20000, (k,), generator=g).tolist()
         times = []
         for r in range(reps + 3):
             sync()
             t = time.perf_counter()
-            logits = model(x, past_key_values=cache, use_cache=True).logits
-            _ = int(torch.argmax(logits[0, -1, :vocab]))  # host sync, as in the real loop
+            logits = runner.forward(x)
+            _ = int(torch.argmax(logits[-1, :vocab]))  # host sync, as in the real loop
             sync()
             if r >= 3:
                 times.append(time.perf_counter() - t)
-            rollback(cache, ctx_len)
+            runner.rollback(ctx_len)
         out[str(k)] = statistics.median(times) * 1e3
     return out
 
@@ -326,6 +435,15 @@ def hf_reference(
     if hasattr(gc, "assistant_confidence_threshold"):
         gc.assistant_confidence_threshold = 0.0
     try:
+        warm = encode(tok, prompts[0], device)
+        target.generate(warm, max_new_tokens=8, do_sample=False, pad_token_id=tok.eos_token_id)
+        target.generate(
+            warm,
+            assistant_model=draft,
+            max_new_tokens=8,
+            do_sample=False,
+            pad_token_id=tok.eos_token_id,
+        )
         for p in prompts:
             ids = encode(tok, p, device)
             common = {
@@ -370,6 +488,12 @@ def main() -> None:
     ap.add_argument("--hf-reference", action="store_true")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--allow-cpu", action="store_true", help="run without a GPU (smoke tests)")
+    ap.add_argument(
+        "--cuda-graphs",
+        action="store_true",
+        help="StaticCache + torch.compile(mode='reduce-overhead') for both models",
+    )
+    ap.add_argument("--max-cache", type=int, default=1280, help="static KV-cache length")
     args = ap.parse_args()
 
     if not torch.cuda.is_available() and not args.allow_cpu:
@@ -392,6 +516,15 @@ def main() -> None:
     draft = load(args.draft, device, dtype)
     vocab = min(target.config.vocab_size, draft.config.vocab_size, len(tok))
     stop = eos_ids(tok)
+    graphs = bool(args.cuda_graphs)
+    if graphs:
+        import torch._dynamo as dynamo
+
+        for knob in ("cache_size_limit", "recompile_limit"):
+            if hasattr(dynamo.config, knob):
+                setattr(dynamo.config, knob, 64)
+    t_run = Runner(target, graphs, args.max_cache, device, dtype)
+    d_run = Runner(draft, graphs, args.max_cache, device, dtype)
 
     result: dict[str, Any] = {
         "meta": {
@@ -406,23 +539,34 @@ def main() -> None:
             "gammas": gammas,
             "temperatures": temps,
             "prompts_per_task": args.prompts_per_task,
+            "cuda_graphs": graphs,
         },
         "latency_ms": {},
         "runs": [],
     }
 
+    ks = [int(k) for k in args.profile_ks.split(",")]
+    if graphs:
+        # Only shapes the decode loop can produce get a graph.
+        ks = [k for k in ks if k <= max(gammas) + 1]
+        log(f"capturing CUDA graphs: target shapes 1..{max(gammas) + 1}, draft shapes 1-2")
+        t0 = time.perf_counter()
+        t_run.warmup(list(range(1, max(gammas) + 2)))
+        d_run.warmup([1, 2])
+        log(f"  graphs ready in {time.perf_counter() - t0:.0f}s")
+
     # Warm-up (CUDA context, cuBLAS handles, allocator).
     warm = encode(tok, "Hello!", device)
     speculative_generate(
-        target, draft, warm, 2, 8, 0.0, vocab, stop, torch.Generator(device=device).manual_seed(0)
+        t_run, d_run, warm, 2, 8, 0.0, vocab, stop, torch.Generator(device=device).manual_seed(0)
     )
 
     log("profiling forward latency")
-    ks = [int(k) for k in args.profile_ks.split(",")]
+    draft_ks = [1, 2] if graphs else [1, 2, 4]
     for ctx in (int(c) for c in args.profile_ctx.split(",")):
         result["latency_ms"][str(ctx)] = {
-            "target": profile_forward(target, ctx, ks, args.profile_reps, device, vocab),
-            "draft": profile_forward(draft, ctx, [1, 2, 4], args.profile_reps, device, vocab),
+            "target": profile_forward(t_run, ctx, ks, args.profile_reps, device, vocab),
+            "draft": profile_forward(d_run, ctx, draft_ks, args.profile_reps, device, vocab),
         }
         lat = result["latency_ms"][str(ctx)]
         log(
@@ -440,7 +584,7 @@ def main() -> None:
                     seed = args.seed * 1_000_003 + pi * 7919 + gamma * 104_729 + int(temp * 1000)
                     gen = torch.Generator(device=device).manual_seed(seed)
                     r = speculative_generate(
-                        target, draft, ids, gamma, args.max_new, temp, vocab, stop, gen
+                        t_run, d_run, ids, gamma, args.max_new, temp, vocab, stop, gen
                     )
                     n_tok += r["n_new"]
                     result["runs"].append(
@@ -461,7 +605,7 @@ def main() -> None:
             with open(args.out, "w") as f:
                 json.dump(result, f)
 
-    if args.hf_reference:
+    if args.hf_reference and not graphs:
         log("running Hugging Face assisted-generation reference")
         ref_prompts = [ps[0] for ps in tasks.values()]
         result["hf_reference"] = hf_reference(

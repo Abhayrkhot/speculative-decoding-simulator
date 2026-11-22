@@ -134,7 +134,7 @@ def speculative_sample(
     buf = np.full((n, length + gamma + 1), -1, dtype=np.int64)
     pos = np.zeros(n, dtype=np.int64)
     last = np.full(n, start, dtype=np.int64)
-    proposed = accepted = 0
+    proposed = accepted = n_emitted = 0
     expected_acc = 0.0
     cycles = 0
     row_acc = pair.row_acceptance()
@@ -183,6 +183,7 @@ def speculative_sample(
         tried = slots[None, :gamma] <= np.minimum(n_acc, gamma - 1)[:, None]
         proposed += int(tried.sum())
         accepted += int(n_acc.sum())
+        n_emitted += int((n_acc + 1).sum())
         expected_acc += float(row_acc[ctx][tried].sum())
         cycles += m
 
@@ -193,7 +194,7 @@ def speculative_sample(
     stats = {
         "acceptance_rate": accepted / proposed if proposed else float("nan"),
         "expected_acceptance": expected_acc / proposed if proposed else float("nan"),
-        "tokens_per_cycle": float(n * length) / cycles,
+        "tokens_per_cycle": n_emitted / cycles,
     }
     return buf[:, :length], stats
 
@@ -242,8 +243,9 @@ def lossless_check(
 
     Passes if every Bonferroni-corrected p-value exceeds ``alpha_level``.
     """
-    rng = np.random.default_rng(seed)
-    pair = MarkovPair.random(vocab, divergence, seed=seed)
+    model_seed, sample_seed = np.random.SeedSequence(seed).spawn(2)
+    rng = np.random.default_rng(sample_seed)
+    pair = MarkovPair.random(vocab, divergence, seed=int(model_seed.generate_state(1)[0]))
     seqs, stats = speculative_sample(pair, samples, length, gamma, rng, residual=residual)
 
     marg = pair.marginals(length)
@@ -256,8 +258,16 @@ def lossless_check(
     prev = np.concatenate([np.zeros((samples, 1), dtype=np.int64), seqs[:, :-1]], axis=1)
     pairs = np.zeros((vocab, vocab))
     np.add.at(pairs, (prev.ravel(), seqs.ravel()), 1.0)
+    # Expected counts use each row's observed total, so each non-empty row
+    # contributes (bins - 1) degrees of freedom.
     expected = pairs.sum(axis=1, keepdims=True) * pair.P
-    stat, dof = _chi_square(pairs.ravel(), expected.ravel())
+    stat, dof = 0.0, 0
+    for a in range(vocab):
+        if pairs[a].sum() == 0:
+            continue
+        s_a, d_a = _chi_square(pairs[a], expected[a])
+        stat += s_a
+        dof += d_a
     p_bigram = chi_square_sf(stat, dof)
 
     n_tests = length + 1

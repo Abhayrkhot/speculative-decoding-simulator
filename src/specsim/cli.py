@@ -69,7 +69,10 @@ def _latency(args: argparse.Namespace) -> LatencyModel:
     if args.target_ms is not None or args.draft_ms is not None:
         if args.target_ms is None or args.draft_ms is None:
             raise SystemExit("--target-ms and --draft-ms must be given together")
-        return ConstantLatency(args.target_ms / 1e3, args.draft_ms / 1e3)
+        o = args.overhead_ms
+        return ConstantLatency((args.target_ms + o) / 1e3, (args.draft_ms + o) / 1e3)
+    if args.overhead_ms:
+        raise SystemExit("--overhead-ms needs --target-ms/--draft-ms or --roofline")
     return ConstantLatency.from_ratio(args.c if args.c is not None else 0.05)
 
 

@@ -22,6 +22,25 @@ def test_fit_latency_recovers_profile(bench_results: dict[str, Any]) -> None:
     assert lat.target_per_token_s == pytest.approx(TRUE_LATENCY.target_per_token_s, rel=1e-6)
 
 
+def test_tabulated_latency_interpolates_between_contexts() -> None:
+    from specsim.calibrate import tabulated_latency
+
+    res = {
+        "latency_ms": {
+            "256": {"target": {"1": 10.0, "4": 12.0}, "draft": {"1": 2.0}},
+            "1024": {"target": {"1": 14.0, "4": 16.0}, "draft": {"1": 3.0}},
+        },
+        "runs": [],
+    }
+    lat, ctx = tabulated_latency(res, context=640)
+    assert ctx == 640
+    assert lat.target(1) == pytest.approx(0.012)
+    assert lat.target(4) == pytest.approx(0.014)
+    assert lat.draft(1) == pytest.approx(0.0025)
+    lat_hi, _ = tabulated_latency(res, context=5000)
+    assert lat_hi.target(1) == pytest.approx(0.014)
+
+
 def test_calibration_report_recovers_acceptance(bench_results: dict[str, Any]) -> None:
     rep = calibration_report(bench_results)
     by_task = {r["task"]: r for r in rep["acceptance"]}
@@ -152,6 +171,8 @@ def test_cli_lossless(capsys: pytest.CaptureFixture[str]) -> None:
 def test_cli_errors(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit):
         main(["simulate", "--target-ms", "20"])
+    with pytest.raises(SystemExit):
+        main(["simulate", "--c", "0.1", "--overhead-ms", "1"])
     code = main(["simulate", "--alpha", "1.5"])
     assert code == 2
     assert "alpha" in capsys.readouterr().err

@@ -4,12 +4,17 @@ Input is the JSON written by ``bench/spec_bench.py``: a forward-latency profile
 for both models plus per-cycle acceptance traces and wall-clock times for
 plain decoding (``gamma=0``) and speculative decoding at several ``gamma``.
 
-```validate`` predicts each measured speedup *out of sample*: the acceptance
-model for ``(task, temperature, gamma)`` is fitted only on traces recorded at
-the other gammas, latency is interpolated from the standalone forward-pass
-profile, and
-host-side overhead per forward pass is estimated from the ``gamma=0`` runs
-alone. Nothing is fitted to the speculative wall-clock times being predicted.
+``validate`` predicts each measured speedup *out of sample*:
+
+* acceptance for a run (task, temperature, gamma, prompt) is fitted only on
+  traces from *other prompts at other gammas* of the same task and
+  temperature. Holding out the prompt matters at temperature 0, where every
+  gamma decodes the same text and so sees the same draft/target agreement;
+* latency is interpolated from the standalone forward-pass profile (between
+  the profiled context lengths);
+* host-side overhead per forward pass is estimated from the ``gamma=0`` runs.
+
+Nothing is fitted to the speculative wall-clock times being predicted.
 """
 
 from __future__ import annotations
@@ -32,6 +37,7 @@ __all__ = [
     "greedy_match",
     "load_results",
     "measured_speedups",
+    "tabulated_latency",
     "validate",
 ]
 
@@ -67,16 +73,27 @@ def fit_latency(res: Results, context: int | None = None) -> tuple[LinearLatency
     return LinearLatency.fit(target, draft), ctx
 
 
-def tabulated_latency(res: Results, context: int | None = None) -> tuple[TabulatedLatency, int]:
-    """Interpolated latency from the measured profile closest to ``context`` tokens."""
-    _, ctx = fit_latency(res, context)
-    prof = res["latency_ms"][str(ctx)]
-    return (
-        TabulatedLatency.from_profiles(
-            {int(k): ms / 1e3 for k, ms in prof["target"].items()},
-            {int(k): ms / 1e3 for k, ms in prof["draft"].items()},
-        ),
-        ctx,
+def tabulated_latency(res: Results, context: float | None = None) -> tuple[TabulatedLatency, int]:
+    """Latency at ``context`` tokens, interpolated between the profiled contexts.
+
+    Returns the model and the (rounded) context it represents. Outside the
+    profiled range the nearest profile is used.
+    """
+    profiles = {int(c): v for c, v in res["latency_ms"].items()}
+    if not profiles:
+        raise ValueError("results contain no latency profile")
+    want = float(context) if context is not None else _mean_context(res)
+    ctxs = sorted(profiles)
+    lo = max([c for c in ctxs if c <= want], default=ctxs[0])
+    hi = min([c for c in ctxs if c >= want], default=ctxs[-1])
+    w = 0.0 if hi == lo else (want - lo) / (hi - lo)
+
+    def blend(model: str) -> dict[int, float]:
+        a, b = profiles[lo][model], profiles[hi][model]
+        return {int(k): ((1 - w) * a[k] + w * b[k]) / 1e3 for k in a if k in b}
+
+    return TabulatedLatency.from_profiles(blend("target"), blend("draft")), round(
+        lo + w * (hi - lo)
     )
 
 
@@ -87,10 +104,16 @@ def _groups(res: Results) -> dict[tuple[str, float], list[dict[str, Any]]]:
     return dict(g)
 
 
-def _cycles(runs: Iterable[dict[str, Any]], exclude_gamma: int | None = None) -> list[list[int]]:
+def _cycles(
+    runs: Iterable[dict[str, Any]],
+    exclude_gamma: int | None = None,
+    exclude_prompt: int | None = None,
+) -> list[list[int]]:
     out: list[list[int]] = []
     for r in runs:
         if r["gamma"] == 0 or r["gamma"] == exclude_gamma:
+            continue
+        if exclude_prompt is not None and r.get("prompt_id") == exclude_prompt:
             continue
         out.extend(r["cycles"])
     return out
@@ -187,7 +210,7 @@ def greedy_match(res: Results) -> dict[str, float]:
 def validate(
     path: str | Path | Results,
     acceptance: str = "positional",
-    trials: int = 2000,
+    trials: int = 500,
     seed: int = 0,
 ) -> dict[str, Any]:
     """Out-of-sample prediction of every measured speedup; see module docstring."""
@@ -208,13 +231,28 @@ def validate(
         overhead = max(_per_token(base_runs) - lat.target(1), 0.0)
         lat_o = lat.with_overhead(overhead)
 
-        cyc = _cycles(runs, exclude_gamma=gamma)
-        if not cyc:
+        # Cross-fit: predict each prompt's run from the other prompts' traces.
+        pred_time = 0.0
+        pred_tokens = 0
+        alphas: list[float] = []
+        for i, run in enumerate(spec_runs):
+            cyc = _cycles(runs, exclude_gamma=gamma, exclude_prompt=run.get("prompt_id"))
+            if not cyc:
+                cyc = _cycles(runs, exclude_gamma=gamma)
+            if not cyc:
+                break
+            pos = PositionalAcceptance.from_traces(cyc)
+            alphas.append(pos.mean_alpha)
+            acc: AcceptanceModel = (
+                pos if acceptance == "positional" else IIDAcceptance(pos.mean_alpha)
+            )
+            n = max(2, int(run["n_new"]))
+            sim = simulate(acc, gamma, lat_o, tokens=n, trials=trials, seed=seed + i)
+            pred_time += sim.speculative_time
+            pred_tokens += n
+        if not alphas:
             continue
-        pos = PositionalAcceptance.from_traces(cyc)
-        acc: AcceptanceModel = pos if acceptance == "positional" else IIDAcceptance(pos.mean_alpha)
-        tokens = max(2, round(float(np.mean([r["n_new"] for r in spec_runs]))))
-        pred = simulate(acc, gamma, lat_o, tokens=tokens, trials=trials, seed=seed).speedup
+        pred = lat_o.target(1) * pred_tokens / pred_time
 
         own = _cycles(spec_runs)
         rows.append(
@@ -225,7 +263,7 @@ def validate(
                 "measured": meas,
                 "predicted": pred,
                 "error_pct": 100.0 * (pred - meas) / meas,
-                "alpha_fit": pos.mean_alpha,
+                "alpha_fit": float(np.mean(alphas)),
                 "host_overhead_ms": overhead * 1e3,
                 "tokens_per_cycle_measured": (
                     sum(a + 1 for _, a in own) / len(own) if own else float("nan")

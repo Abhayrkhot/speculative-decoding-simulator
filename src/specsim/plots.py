@@ -269,3 +269,41 @@ def sim_vs_theory_plot(
     ax.set_title(title, loc="left")
     ax.legend(loc="upper left")
     _save(fig, path)
+
+
+def combined_validation_plot(
+    reports: Sequence[tuple[str, dict[str, Any]]], path: str, title: str | None = None
+) -> None:
+    """Predicted vs measured speedup for every configuration of several runs."""
+    plt = _plt()
+    fig, ax = plt.subplots(figsize=(5.4, 5.0))
+    allv = [v for _, rep in reports for r in rep["rows"] for v in (r["measured"], r["predicted"])]
+    lo, hi = min(allv) * 0.95, max(allv) * 1.05
+    ax.plot([lo, hi], [lo, hi], color=INK_2, lw=0.8, ls=(0, (2, 2)), zorder=1)
+    ax.axvline(1.0, color=GRID, lw=1.0, zorder=0)
+    ax.axhline(1.0, color=GRID, lw=1.0, zorder=0)
+    for i, (label, rep) in enumerate(reports):
+        m = [r["measured"] for r in rep["rows"]]
+        p = [r["predicted"] for r in rep["rows"]]
+        s = rep["summary"]
+        ax.scatter(
+            m,
+            p,
+            s=26,
+            color=SERIES[i % len(SERIES)],
+            edgecolor=SURFACE,
+            linewidth=1.2,
+            zorder=3,
+            label=f"{label} (mean |err| {s['mae_pct']:.1f}%)",
+        )
+    ax.set_xlim(lo, hi)
+    ax.set_ylim(lo, hi)
+    ax.set_aspect("equal")
+    ax.set_xlabel("measured decode speedup (x)")
+    ax.set_ylabel("predicted speedup (x)")
+    ax.set_title(title or "Predicted vs measured, every task x temperature x gamma", loc="left")
+    ax.legend(loc="upper left")
+    ax.text(
+        hi - 0.03 * (hi - lo), hi - 0.08 * (hi - lo), "y = x", ha="right", fontsize=8, color=INK_2
+    )
+    _save(fig, path)

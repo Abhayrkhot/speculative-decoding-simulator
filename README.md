@@ -139,16 +139,36 @@ batch 1, to 3.5x (`gamma = 7`) at batch 32, to 1.6x (`gamma = 1`) at batch 256:
 pip install -e ".[bench]"
 python bench/spec_bench.py --draft Qwen/Qwen2.5-0.5B-Instruct \
     --target Qwen/Qwen2.5-7B-Instruct --out results/run.json --hf-reference
+python bench/spec_bench.py ... --cuda-graphs        # static KV cache + CUDA graphs
 specsim validate results/run.json --plot docs/validation.png
-python scripts/make_figures.py results/run.json   # regenerate every figure
+python scripts/make_figures.py results/*.json       # regenerate every figure
 ```
 
 [`bench/explorer.sbatch`](bench/explorer.sbatch) is the Slurm job used on
-Northeastern's Explorer cluster. The harness uses its own speculative decoding
-loop with KV-cache rollback, so it can record per-cycle acceptance, and it times
-plain decoding through the same code path for an apples-to-apples baseline.
-Every greedy speculative output is also compared token-for-token with the
-target-only output.
+Northeastern's Explorer cluster:
+
+```bash
+VENV=env126 sbatch bench/explorer.sbatch                                   # 7B, eager
+VENV=env126 TARGET=Qwen/Qwen2.5-32B-Instruct TAG=0.5b_32b_graphs \
+    BENCH_FLAGS=--cuda-graphs GAMMAS=1,2,3,4,6,8 sbatch bench/explorer.sbatch
+```
+
+The torch wheel must match the node's driver: Explorer's driver 545 needs a
+`cu12x` build, and a newer wheel silently falls back to CPU. The harness refuses
+to run without CUDA unless you pass `--allow-cpu`.
+
+How the harness works:
+
+- It runs its own speculative decoding loop with KV-cache rollback, so it can
+  record per-cycle acceptance. Plain decoding goes through the same code path,
+  so the baseline is apples-to-apples.
+- `--cuda-graphs` gives **both** models a static KV cache and
+  `torch.compile(mode="reduce-overhead")`, with one CUDA graph per decode shape.
+  Rollback only moves the write position; stale slots are masked out.
+- Every greedy speculative output is compared token-for-token with the
+  target-only output.
+- Sanity check: with the same model as draft and target, acceptance must be
+  100% and greedy output identical (verified on CPU and on H200 in both modes).
 
 ## Limitations
 

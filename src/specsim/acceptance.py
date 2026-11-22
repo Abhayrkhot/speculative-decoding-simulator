@@ -10,8 +10,10 @@ target always contributes one: the correction or the bonus token).
     Every position has the same ``alpha`` - the textbook assumption.
 ``PositionalAcceptance``
     One ``alpha`` per position, typically estimated from measured traces with
-    :meth:`PositionalAcceptance.from_traces`. Real drafts get less reliable the
-    further ahead they guess, which the i.i.d. model cannot express.
+    :meth:`PositionalAcceptance.from_traces`. Conditional acceptance is not
+    constant across positions: in the Qwen2.5 runs in this repo it is flat to
+    slightly *rising* (a draft that has matched so far tends to keep
+    matching), which the i.i.d. model cannot express.
 """
 
 from __future__ import annotations

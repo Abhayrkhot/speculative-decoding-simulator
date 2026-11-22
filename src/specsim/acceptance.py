@@ -20,16 +20,20 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
+import numpy.typing as npt
 
 __all__ = ["AcceptanceModel", "IIDAcceptance", "PositionalAcceptance", "as_acceptance"]
+
+# Annotated as NDArray[Any]: bare ndarray is an incomplete generic in numpy<2.3 stubs.
+Array = npt.NDArray[Any]
 
 
 @runtime_checkable
 class AcceptanceModel(Protocol):
-    def alphas(self, gamma: int) -> np.ndarray:
+    def alphas(self, gamma: int) -> Array:
         """Conditional acceptance probability for draft positions ``1..gamma``."""
         ...
 
@@ -46,7 +50,7 @@ class IIDAcceptance:
     def __post_init__(self) -> None:
         _check_prob("alpha", self.alpha)
 
-    def alphas(self, gamma: int) -> np.ndarray:
+    def alphas(self, gamma: int) -> Array:
         return np.full(gamma, self.alpha, dtype=float)
 
 
@@ -63,9 +67,9 @@ class PositionalAcceptance:
         for i, a in enumerate(self.values):
             _check_prob(f"values[{i}]", a)
 
-    def alphas(self, gamma: int) -> np.ndarray:
+    def alphas(self, gamma: int) -> Array:
         v = np.asarray(self.values, dtype=float)
-        out: np.ndarray = (
+        out: Array = (
             v[:gamma].copy()
             if gamma <= len(v)
             else np.concatenate([v, np.full(gamma - len(v), v[-1])])

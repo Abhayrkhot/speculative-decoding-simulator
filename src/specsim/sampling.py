@@ -25,8 +25,10 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 
 __all__ = [
     "MarkovPair",
@@ -37,24 +39,27 @@ __all__ = [
     "speculative_sample",
 ]
 
+# Annotated as NDArray[Any]: bare ndarray is an incomplete generic in numpy<2.3 stubs.
+Array = npt.NDArray[Any]
 
-def acceptance_probability(p: np.ndarray, q: np.ndarray) -> float:
+
+def acceptance_probability(p: Array, q: Array) -> float:
     """``sum_x min(p(x), q(x))`` = 1 - total-variation distance."""
     return float(np.minimum(p, q).sum())
 
 
-def _softmax(z: np.ndarray) -> np.ndarray:
+def _softmax(z: Array) -> Array:
     e = np.exp(z - z.max(axis=-1, keepdims=True))
-    out: np.ndarray = e / e.sum(axis=-1, keepdims=True)
+    out: Array = e / e.sum(axis=-1, keepdims=True)
     return out
 
 
-def _sample_rows(probs: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+def _sample_rows(probs: Array, rng: np.random.Generator) -> Array:
     """Draw one index per row of a (n, V) probability matrix (inverse CDF)."""
     cdf = np.cumsum(probs, axis=1)
     u = rng.random(probs.shape[0]) * cdf[:, -1]
-    idx: np.ndarray = (cdf < u[:, None]).sum(axis=1)
-    out: np.ndarray = np.minimum(idx, probs.shape[1] - 1)
+    idx: Array = (cdf < u[:, None]).sum(axis=1)
+    out: Array = np.minimum(idx, probs.shape[1] - 1)
     return out
 
 
@@ -62,8 +67,8 @@ def _sample_rows(probs: np.ndarray, rng: np.random.Generator) -> np.ndarray:
 class MarkovPair:
     """Target/draft bigram models over a vocabulary of size ``V``."""
 
-    P: np.ndarray  # (V, V) target transitions
-    Q: np.ndarray  # (V, V) draft transitions
+    P: Array  # (V, V) target transitions
+    Q: Array  # (V, V) draft transitions
 
     @classmethod
     def random(
@@ -83,14 +88,14 @@ class MarkovPair:
     def vocab(self) -> int:
         return int(self.P.shape[0])
 
-    def row_acceptance(self) -> np.ndarray:
+    def row_acceptance(self) -> Array:
         """Acceptance probability for each context: ``1 - TV(P[c], Q[c])``."""
-        out: np.ndarray = np.minimum(self.P, self.Q).sum(axis=1)
+        out: Array = np.minimum(self.P, self.Q).sum(axis=1)
         return out
 
-    def marginals(self, length: int, start: int = 0) -> np.ndarray:
+    def marginals(self, length: int, start: int = 0) -> Array:
         """Exact distribution of the target's token at positions ``1..length``."""
-        dist = np.zeros(self.vocab)
+        dist: Array = np.zeros(self.vocab)
         dist[start] = 1.0
         rows = []
         for _ in range(length):
@@ -101,10 +106,10 @@ class MarkovPair:
 
 def sample_target(
     pair: MarkovPair, n: int, length: int, rng: np.random.Generator, start: int = 0
-) -> np.ndarray:
+) -> Array:
     """Plain ancestral sampling from the target: ``(n, length)`` tokens."""
     out = np.empty((n, length), dtype=np.int64)
-    last = np.full(n, start)
+    last: Array = np.full(n, start)
     for t in range(length):
         last = _sample_rows(pair.P[last], rng)
         out[:, t] = last
@@ -119,7 +124,7 @@ def speculative_sample(
     rng: np.random.Generator,
     start: int = 0,
     residual: bool = True,
-) -> tuple[np.ndarray, dict[str, float]]:
+) -> tuple[Array, dict[str, float]]:
     """Generate ``n`` sequences of ``length`` tokens with speculative sampling.
 
     ``residual=False`` replaces the residual distribution with ``P`` on
@@ -208,9 +213,7 @@ def chi_square_sf(stat: float, dof: int) -> float:
     return 0.5 * math.erfc(z / math.sqrt(2.0))
 
 
-def _chi_square(
-    observed: np.ndarray, expected: np.ndarray, min_expected: float = 5.0
-) -> tuple[float, int]:
+def _chi_square(observed: Array, expected: Array, min_expected: float = 5.0) -> tuple[float, int]:
     """Pearson statistic, pooling cells with small expected counts into one bin."""
     small = expected < min_expected
     obs = np.append(observed[~small], observed[small].sum())

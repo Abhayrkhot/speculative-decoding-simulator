@@ -110,6 +110,17 @@ def sync() -> None:
         torch.cuda.synchronize()
 
 
+def rollback(cache: Any, length: int) -> None:
+    """Truncate a KV cache to its first ``length`` tokens.
+
+    Uses the negative-count form of ``crop`` ("remove n tokens"), which every
+    transformers version accepts; 5.x rejects positive arguments.
+    """
+    extra = cache.get_seq_length() - length
+    if extra > 0:
+        cache.crop(-extra)
+
+
 def load(name: str, device: str, dtype: torch.dtype) -> Any:
     kwargs: dict[str, Any] = {"device_map": device, "attn_implementation": "sdpa"}
     try:
@@ -250,9 +261,9 @@ def speculative_generate(
         cycles.append([k, n_acc])
 
         # ---- roll back both caches to the accepted prefix ----
-        t_cache.crop(base + len(accepted))
+        rollback(t_cache, base + len(accepted))
         if d_cache is not None:
-            d_cache.crop(base + len(accepted))
+            rollback(d_cache, base + len(accepted))
 
     sync()
     t_total = time.perf_counter() - t_start
@@ -292,7 +303,7 @@ def profile_forward(
             sync()
             if r >= 3:
                 times.append(time.perf_counter() - t)
-            cache.crop(ctx_len)
+            rollback(cache, ctx_len)
         out[str(k)] = statistics.median(times) * 1e3
     return out
 
@@ -358,8 +369,14 @@ def main() -> None:
     ap.add_argument("--profile-reps", type=int, default=20)
     ap.add_argument("--hf-reference", action="store_true")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--allow-cpu", action="store_true", help="run without a GPU (smoke tests)")
     args = ap.parse_args()
 
+    if not torch.cuda.is_available() and not args.allow_cpu:
+        raise SystemExit(
+            f"CUDA unavailable (torch {torch.__version__}, built for CUDA {torch.version.cuda}); "
+            "check the driver or pass --allow-cpu"
+        )
     device = "cuda" if torch.cuda.is_available() else "cpu"
     dtype = torch.bfloat16 if device == "cuda" else torch.float32
     gammas = [int(g) for g in args.gammas.split(",")]

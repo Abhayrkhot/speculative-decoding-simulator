@@ -21,7 +21,7 @@ EXTRA=${EXTRA:-}
 
 cd "$WORK"
 module load python/3.13.5
-source env/bin/activate
+source "${VENV:-env}/bin/activate"
 export HF_HOME=${HF_HOME:-/scratch/$USER/hf}
 export HF_HUB_OFFLINE=1
 mkdir -p results

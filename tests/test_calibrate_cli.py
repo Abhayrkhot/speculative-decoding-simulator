@@ -90,6 +90,15 @@ def test_cycle_overhead_is_learned_from_other_gammas() -> None:
     assert all(r["cycle_overhead_ms"] == pytest.approx(6.0, rel=0.25) for r in rep["rows"])
 
 
+def test_acceptance_from_another_run(bench_results: dict[str, Any]) -> None:
+    from .conftest import synthetic_results
+
+    other = synthetic_results(seed=11)  # same models, independent draws
+    rep = validate(bench_results, trials=300, acceptance_from=other)
+    assert rep["acceptance_source"] == "external"
+    assert rep["summary"]["mae_pct"] < 5.0, rep["rows"]
+
+
 def test_load_rejects_wrong_json(tmp_path: Path) -> None:
     p = tmp_path / "x.json"
     p.write_text("{}")

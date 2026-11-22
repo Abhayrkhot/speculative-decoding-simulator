@@ -213,6 +213,7 @@ def validate(
     trials: int = 500,
     seed: int = 0,
     cycle_overhead: bool = True,
+    acceptance_from: str | Path | Results | None = None,
 ) -> dict[str, Any]:
     """Out-of-sample prediction of every measured speedup; see module docstring.
 
@@ -227,6 +228,11 @@ def validate(
         speculative runs at the *other* gammas of the same temperature. Still
         out of sample for the gamma being predicted. Disable with
         ``cycle_overhead=False``.
+
+    ``acceptance_from`` takes acceptance traces from a *different* benchmark
+    run (e.g. eager mode) instead of cross-fitting within this one: the
+    "measure acceptance once, predict any runtime from a latency profile"
+    workflow.
     """
     if acceptance not in ("positional", "iid"):
         raise ValueError("acceptance must be 'positional' or 'iid'")
@@ -234,6 +240,7 @@ def validate(
     lat, ctx = tabulated_latency(res)
     measured = measured_speedups(res)
     groups = _groups(res)
+    src_groups = _groups(load_results(acceptance_from)) if acceptance_from is not None else None
 
     # Pass 1: zero-overhead prediction for every speculative run.
     per_run: list[dict[str, Any]] = []
@@ -250,10 +257,14 @@ def validate(
         host_overhead[(task, temp)] = overhead
         for i, run in enumerate(r for r in runs if r["gamma"] > 0):
             gamma = int(run["gamma"])
-            # Cross-fit: acceptance from other prompts at other gammas.
-            cyc = _cycles(runs, exclude_gamma=gamma, exclude_prompt=run.get("prompt_id"))
-            if not cyc:
-                cyc = _cycles(runs, exclude_gamma=gamma)
+            if src_groups is not None:
+                # Acceptance measured in another run, all gammas and prompts.
+                cyc = _cycles(src_groups.get((task, temp), []))
+            else:
+                # Cross-fit: acceptance from other prompts at other gammas.
+                cyc = _cycles(runs, exclude_gamma=gamma, exclude_prompt=run.get("prompt_id"))
+                if not cyc:
+                    cyc = _cycles(runs, exclude_gamma=gamma)
             if not cyc:
                 continue
             pos = PositionalAcceptance.from_traces(cyc)
@@ -342,6 +353,7 @@ def validate(
     return {
         "meta": res["meta"],
         "acceptance_model": acceptance,
+        "acceptance_source": "cross-fit" if acceptance_from is None else "external",
         "latency_context": ctx,
         "rows": rows,
         "gamma_choice": choices,

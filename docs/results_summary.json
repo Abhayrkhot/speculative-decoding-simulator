@@ -934,6 +934,80 @@
      "tokens_per_cycle_measured": 3.37125748502994
     }
    ],
+   "gamma_choice": [
+    {
+     "task": "chat",
+     "temperature": 0.0,
+     "chosen_gamma": 2,
+     "best_gamma": 2,
+     "speedup_at_chosen": 1.0858455520440995,
+     "best_speedup": 1.0858455520440995,
+     "regret_pct": 0.0
+    },
+    {
+     "task": "chat",
+     "temperature": 0.7,
+     "chosen_gamma": 2,
+     "best_gamma": 2,
+     "speedup_at_chosen": 1.1220615311227355,
+     "best_speedup": 1.1220615311227355,
+     "regret_pct": 0.0
+    },
+    {
+     "task": "code",
+     "temperature": 0.0,
+     "chosen_gamma": 4,
+     "best_gamma": 4,
+     "speedup_at_chosen": 1.4016000270863407,
+     "best_speedup": 1.4016000270863407,
+     "regret_pct": 0.0
+    },
+    {
+     "task": "code",
+     "temperature": 0.7,
+     "chosen_gamma": 3,
+     "best_gamma": 4,
+     "speedup_at_chosen": 1.3438528589516114,
+     "best_speedup": 1.3783204529551452,
+     "regret_pct": 2.500695243231321
+    },
+    {
+     "task": "math",
+     "temperature": 0.0,
+     "chosen_gamma": 6,
+     "best_gamma": 8,
+     "speedup_at_chosen": 1.645153929604583,
+     "best_speedup": 1.6475568474864921,
+     "regret_pct": 0.14584734272296007
+    },
+    {
+     "task": "math",
+     "temperature": 0.7,
+     "chosen_gamma": 6,
+     "best_gamma": 6,
+     "speedup_at_chosen": 1.65129308446471,
+     "best_speedup": 1.65129308446471,
+     "regret_pct": 0.0
+    },
+    {
+     "task": "summarize",
+     "temperature": 0.0,
+     "chosen_gamma": 3,
+     "best_gamma": 2,
+     "speedup_at_chosen": 1.1488957634528192,
+     "best_speedup": 1.1778250300214246,
+     "regret_pct": 2.4561599415219737
+    },
+    {
+     "task": "summarize",
+     "temperature": 0.7,
+     "chosen_gamma": 2,
+     "best_gamma": 2,
+     "speedup_at_chosen": 1.1235726711855507,
+     "best_speedup": 1.1235726711855507,
+     "regret_pct": 0.0
+    }
+   ],
    "summary": {
     "n": 48,
     "mae_pct": 2.523829618933467,
@@ -941,6 +1015,8 @@
     "mae_raw_pct": 4.489415341652085,
     "max_abs_error_raw_pct": 11.128953322165906,
     "best_measured": 1.65129308446471,
+    "gamma_regret_mean_pct": 0.6378378159345319,
+    "gamma_regret_max_pct": 2.500695243231321,
     "best_config": {
      "task": "math",
      "temperature": 0.7,
@@ -2004,6 +2080,80 @@
      "tokens_per_cycle_measured": 3.7088607594936707
     }
    ],
+   "gamma_choice": [
+    {
+     "task": "chat",
+     "temperature": 0.0,
+     "chosen_gamma": 1,
+     "best_gamma": 1,
+     "speedup_at_chosen": 0.8167231978355068,
+     "best_speedup": 0.8167231978355068,
+     "regret_pct": 0.0
+    },
+    {
+     "task": "chat",
+     "temperature": 0.7,
+     "chosen_gamma": 1,
+     "best_gamma": 1,
+     "speedup_at_chosen": 0.7859296188457126,
+     "best_speedup": 0.7859296188457126,
+     "regret_pct": 0.0
+    },
+    {
+     "task": "code",
+     "temperature": 0.0,
+     "chosen_gamma": 1,
+     "best_gamma": 1,
+     "speedup_at_chosen": 0.8659631365644617,
+     "best_speedup": 0.8659631365644617,
+     "regret_pct": 0.0
+    },
+    {
+     "task": "code",
+     "temperature": 0.7,
+     "chosen_gamma": 1,
+     "best_gamma": 1,
+     "speedup_at_chosen": 0.8763149562298884,
+     "best_speedup": 0.8763149562298884,
+     "regret_pct": 0.0
+    },
+    {
+     "task": "math",
+     "temperature": 0.0,
+     "chosen_gamma": 3,
+     "best_gamma": 4,
+     "speedup_at_chosen": 0.9265195963797377,
+     "best_speedup": 0.9523125405469267,
+     "regret_pct": 2.7084536923535407
+    },
+    {
+     "task": "math",
+     "temperature": 0.7,
+     "chosen_gamma": 2,
+     "best_gamma": 3,
+     "speedup_at_chosen": 0.9257144528271777,
+     "best_speedup": 0.9474152920883817,
+     "regret_pct": 2.2905308202666896
+    },
+    {
+     "task": "summarize",
+     "temperature": 0.0,
+     "chosen_gamma": 1,
+     "best_gamma": 1,
+     "speedup_at_chosen": 0.8253781163507874,
+     "best_speedup": 0.8253781163507874,
+     "regret_pct": 0.0
+    },
+    {
+     "task": "summarize",
+     "temperature": 0.7,
+     "chosen_gamma": 1,
+     "best_gamma": 1,
+     "speedup_at_chosen": 0.8186067961575781,
+     "best_speedup": 0.8186067961575781,
+     "regret_pct": 0.0
+    }
+   ],
    "summary": {
     "n": 56,
     "mae_pct": 2.333431151410838,
@@ -2011,10 +2161,1048 @@
     "mae_raw_pct": 3.7278985490893635,
     "max_abs_error_raw_pct": 9.4995326526614,
     "best_measured": 0.9523125405469267,
+    "gamma_regret_mean_pct": 0.6248730640775289,
+    "gamma_regret_max_pct": 2.7084536923535407,
     "best_config": {
      "task": "math",
      "temperature": 0.0,
      "gamma": 4
+    }
+   }
+  }
+ },
+ "0.5b_7b_graphs": {
+  "calibration": {
+   "meta": {
+    "draft": "Qwen/Qwen2.5-0.5B-Instruct",
+    "target": "Qwen/Qwen2.5-7B-Instruct",
+    "device": "NVIDIA H200",
+    "dtype": "torch.bfloat16",
+    "torch": "2.14.1+cu126",
+    "transformers": "5.24.0",
+    "date": "2026-11-22T01:17:34",
+    "max_new": 192,
+    "gammas": [
+     1,
+     2,
+     3,
+     4,
+     6,
+     8
+    ],
+    "temperatures": [
+     0.0,
+     0.7
+    ],
+    "prompts_per_task": 5,
+    "cuda_graphs": true,
+    "target_graph_mismatch": 0.0,
+    "draft_graph_mismatch": 0.0
+   },
+   "latency": {
+    "context": 256,
+    "target_fixed_ms": 7.568047226717078,
+    "target_per_token_ms": 0.03418894484639108,
+    "draft_fixed_ms": 3.4365030005574226,
+    "draft_per_token_ms": 0.039450824260711795,
+    "c": 0.45722781381353383
+   },
+   "acceptance": [
+    {
+     "task": "chat",
+     "temperature": 0.0,
+     "alpha": 0.7103677539995844,
+     "positional": [
+      0.7025974025974026,
+      0.7296631059983566,
+      0.7078313253012049,
+      0.6966966966966966,
+      0.7448275862068966,
+      0.6759259259259259,
+      0.6944444444444444
+     ],
+     "position_counts": [
+      2310,
+      1217,
+      664,
+      333,
+      145,
+      108,
+      36
+     ],
+     "cycles": 2321
+    },
+    {
+     "task": "chat",
+     "temperature": 0.7,
+     "alpha": 0.6909542537776858,
+     "positional": [
+      0.6751886001676446,
+      0.6919934640522876,
+      0.7187993680884676,
+      0.7243589743589743,
+      0.7092198581560284,
+      0.7272727272727273,
+      0.75
+     ],
+     "position_counts": [
+      2386,
+      1224,
+      633,
+      312,
+      141,
+      99,
+      36
+     ],
+     "cycles": 2399
+    },
+    {
+     "task": "code",
+     "temperature": 0.0,
+     "alpha": 0.8550087873462214,
+     "positional": [
+      0.8459051724137931,
+      0.8473214285714286,
+      0.8451327433628318,
+      0.8785529715762274,
+      0.8465346534653465,
+      0.9352941176470588,
+      0.9305555555555556,
+      0.9402985074626866
+     ],
+     "position_counts": [
+      1856,
+      1120,
+      678,
+      387,
+      202,
+      170,
+      72,
+      67
+     ],
+     "cycles": 1868
+    },
+    {
+     "task": "code",
+     "temperature": 0.7,
+     "alpha": 0.8547608600263273,
+     "positional": [
+      0.8402590393955748,
+      0.8456014362657092,
+      0.8731343283582089,
+      0.8668341708542714,
+      0.8786407766990292,
+      0.8994413407821229,
+      0.8648648648648649,
+      0.953125
+     ],
+     "position_counts": [
+      1853,
+      1114,
+      670,
+      398,
+      206,
+      179,
+      74,
+      64
+     ],
+     "cycles": 1864
+    },
+    {
+     "task": "math",
+     "temperature": 0.0,
+     "alpha": 0.9446983546617916,
+     "positional": [
+      0.9288366336633663,
+      0.9494655004859086,
+      0.9465081723625557,
+      0.9689737470167065,
+      0.9739130434782609,
+      0.9553571428571429,
+      0.9175257731958762,
+      0.9772727272727273
+     ],
+     "position_counts": [
+      1616,
+      1029,
+      673,
+      419,
+      230,
+      224,
+      97,
+      88
+     ],
+     "cycles": 1626
+    },
+    {
+     "task": "math",
+     "temperature": 0.7,
+     "alpha": 0.9329088014555379,
+     "positional": [
+      0.932757557063541,
+      0.9287749287749287,
+      0.9314868804664723,
+      0.9452380952380952,
+      0.9606986899563319,
+      0.9027777777777778,
+      0.9325842696629213,
+      0.9397590361445783
+     ],
+     "position_counts": [
+      1621,
+      1053,
+      686,
+      420,
+      229,
+      216,
+      89,
+      83
+     ],
+     "cycles": 1631
+    },
+    {
+     "task": "summarize",
+     "temperature": 0.0,
+     "alpha": 0.7484342379958246,
+     "positional": [
+      0.711340206185567,
+      0.7646219686162625,
+      0.8367346938775511,
+      0.75,
+      0.8611111111111112,
+      0.6551724137931034
+     ],
+     "position_counts": [
+      1358,
+      701,
+      392,
+      228,
+      108,
+      87
+     ],
+     "cycles": 1358
+    },
+    {
+     "task": "summarize",
+     "temperature": 0.7,
+     "alpha": 0.7533711852377573,
+     "positional": [
+      0.7308282208588958,
+      0.7704447632711621,
+      0.7806122448979592,
+      0.7752293577981652,
+      0.7843137254901961,
+      0.72,
+      0.8
+     ],
+     "position_counts": [
+      1304,
+      697,
+      392,
+      218,
+      102,
+      75,
+      30
+     ],
+     "cycles": 1304
+    }
+   ],
+   "greedy_match": {
+    "runs": 120,
+    "exact_match_rate": 0.7166666666666667,
+    "mean_matching_prefix": 0.8350047640459063
+   }
+  },
+  "validation": {
+   "meta": {
+    "draft": "Qwen/Qwen2.5-0.5B-Instruct",
+    "target": "Qwen/Qwen2.5-7B-Instruct",
+    "device": "NVIDIA H200",
+    "dtype": "torch.bfloat16",
+    "torch": "2.14.1+cu126",
+    "transformers": "5.24.0",
+    "date": "2026-11-22T01:17:34",
+    "max_new": 192,
+    "gammas": [
+     1,
+     2,
+     3,
+     4,
+     6,
+     8
+    ],
+    "temperatures": [
+     0.0,
+     0.7
+    ],
+    "prompts_per_task": 5,
+    "cuda_graphs": true,
+    "target_graph_mismatch": 0.0,
+    "draft_graph_mismatch": 0.0
+   },
+   "acceptance_model": "positional",
+   "latency_context": 256,
+   "rows": [
+    {
+     "task": "chat",
+     "temperature": 0.0,
+     "gamma": 1,
+     "measured": 1.076033652317738,
+     "predicted": 1.0462981762930363,
+     "error_pct": -2.763433649184909,
+     "predicted_raw": 1.1477686379957017,
+     "error_raw_pct": 6.6666117294239875,
+     "alpha_fit": 0.7098839086066909,
+     "host_overhead_ms": 0.026834333160270958,
+     "cycle_overhead_ms": 1.086431037608705,
+     "tokens_per_cycle_measured": 1.7142857142857142
+    },
+    {
+     "task": "chat",
+     "temperature": 0.0,
+     "gamma": 2,
+     "measured": 1.0471232134294064,
+     "predicted": 1.078257218489733,
+     "error_pct": 2.973289548071465,
+     "predicted_raw": 1.1439010919759964,
+     "error_raw_pct": 9.242262735216736,
+     "alpha_fit": 0.711002575723594,
+     "host_overhead_ms": 0.026834333160270958,
+     "cycle_overhead_ms": 0.8928786041368453,
+     "tokens_per_cycle_measured": 2.17687074829932
+    },
+    {
+     "task": "chat",
+     "temperature": 0.0,
+     "gamma": 3,
+     "measured": 1.0100327084570029,
+     "predicted": 1.0234684558466065,
+     "error_pct": 1.33022893982602,
+     "predicted_raw": 1.0758460489023134,
+     "error_raw_pct": 6.515961304446428,
+     "alpha_fit": 0.710600791347723,
+     "host_overhead_ms": 0.026834333160270958,
+     "cycle_overhead_ms": 0.9272832073916912,
+     "tokens_per_cycle_measured": 2.5668449197860963
+    },
+    {
+     "task": "chat",
+     "temperature": 0.0,
+     "gamma": 4,
+     "measured": 0.952151139256597,
+     "predicted": 0.9495384143696481,
+     "error_pct": -0.27440232744864157,
+     "predicted_raw": 0.9897465412472661,
+     "error_raw_pct": 3.9484699897562665,
+     "alpha_fit": 0.710235824231364,
+     "host_overhead_ms": 0.026834333160270958,
+     "cycle_overhead_ms": 0.9117147628946684,
+     "tokens_per_cycle_measured": 2.807017543859649
+    },
+    {
+     "task": "chat",
+     "temperature": 0.0,
+     "gamma": 6,
+     "measured": 0.8162268709333921,
+     "predicted": 0.8106533605988491,
+     "error_pct": -0.6828383790121304,
+     "predicted_raw": 0.8358292303706562,
+     "error_raw_pct": 2.4015822236834587,
+     "alpha_fit": 0.7114021943799351,
+     "host_overhead_ms": 0.026834333160270958,
+     "cycle_overhead_ms": 0.8846621555622888,
+     "tokens_per_cycle_measured": 3.0868167202572345
+    },
+    {
+     "task": "chat",
+     "temperature": 0.0,
+     "gamma": 8,
+     "measured": 0.7295403791528464,
+     "predicted": 0.6819170417294435,
+     "error_pct": -6.5278549048517265,
+     "predicted_raw": 0.7014695970138862,
+     "error_raw_pct": -3.847735223587818,
+     "alpha_fit": 0.7102877261065076,
+     "host_overhead_ms": 0.026834333160270958,
+     "cycle_overhead_ms": 1.0111140169300623,
+     "tokens_per_cycle_measured": 3.2764505119453924
+    },
+    {
+     "task": "chat",
+     "temperature": 0.7,
+     "gamma": 1,
+     "measured": 1.0532168333498948,
+     "predicted": 1.0193957329134087,
+     "error_pct": -3.2112191303393485,
+     "predicted_raw": 1.1341894776595425,
+     "error_raw_pct": 7.688126674932028,
+     "alpha_fit": 0.6933074266285187,
+     "host_overhead_ms": 0.0,
+     "cycle_overhead_ms": 1.2554785779139883,
+     "tokens_per_cycle_measured": 1.6666666666666667
+    },
+    {
+     "task": "chat",
+     "temperature": 0.7,
+     "gamma": 2,
+     "measured": 1.0354629913793938,
+     "predicted": 1.02140004738336,
+     "error_pct": -1.3581310112590148,
+     "predicted_raw": 1.1029602863868209,
+     "error_raw_pct": 6.518561799829315,
+     "alpha_fit": 0.6902811770033899,
+     "host_overhead_ms": 0.0,
+     "cycle_overhead_ms": 1.164661207645996,
+     "tokens_per_cycle_measured": 2.1670428893905194
+    },
+    {
+     "task": "chat",
+     "temperature": 0.7,
+     "gamma": 3,
+     "measured": 1.0232343361874032,
+     "predicted": 0.9629764157434767,
+     "error_pct": -5.888965832445483,
+     "predicted_raw": 1.0242181339653418,
+     "error_raw_pct": 0.09614589182026578,
+     "alpha_fit": 0.684577630519966,
+     "host_overhead_ms": 0.0,
+     "cycle_overhead_ms": 1.1455689730905945,
+     "tokens_per_cycle_measured": 2.5806451612903225
+    },
+    {
+     "task": "chat",
+     "temperature": 0.7,
+     "gamma": 4,
+     "measured": 0.8938980816907507,
+     "predicted": 0.9134013045476127,
+     "error_pct": 2.1818172850279445,
+     "predicted_raw": 0.9585651116488212,
+     "error_raw_pct": 7.234273267010146,
+     "alpha_fit": 0.6917842920957785,
+     "host_overhead_ms": 0.0,
+     "cycle_overhead_ms": 1.0580523494118348,
+     "tokens_per_cycle_measured": 2.6519337016574585
+    },
+    {
+     "task": "chat",
+     "temperature": 0.7,
+     "gamma": 6,
+     "measured": 0.7492876220889416,
+     "predicted": 0.7799290469515541,
+     "error_pct": 4.089407586526936,
+     "predicted_raw": 0.8081117388133294,
+     "error_raw_pct": 7.850672424080869,
+     "alpha_fit": 0.693698686742738,
+     "host_overhead_ms": 0.0,
+     "cycle_overhead_ms": 1.0226790225413058,
+     "tokens_per_cycle_measured": 2.8537313432835822
+    },
+    {
+     "task": "chat",
+     "temperature": 0.7,
+     "gamma": 8,
+     "measured": 0.6500838344756548,
+     "predicted": 0.6627843003086326,
+     "error_pct": 1.953665844224806,
+     "predicted_raw": 0.6831188745802295,
+     "error_raw_pct": 5.081658449670592,
+     "alpha_fit": 0.6905343825453993,
+     "host_overhead_ms": 0.0,
+     "cycle_overhead_ms": 1.0744920083905043,
+     "tokens_per_cycle_measured": 3.0868167202572345
+    },
+    {
+     "task": "code",
+     "temperature": 0.0,
+     "gamma": 1,
+     "measured": 1.20289395538374,
+     "predicted": 1.1351190220286915,
+     "error_pct": -5.634323212924237,
+     "predicted_raw": 1.2446955737166392,
+     "error_raw_pct": 3.4750875707546287,
+     "alpha_fit": 0.8557954628298587,
+     "host_overhead_ms": 0.05280396241384277,
+     "cycle_overhead_ms": 1.086431037608705,
+     "tokens_per_cycle_measured": 1.8461538461538463
+    },
+    {
+     "task": "code",
+     "temperature": 0.0,
+     "gamma": 2,
+     "measured": 1.2199587300108912,
+     "predicted": 1.2390641015954116,
+     "error_pct": 1.5660670410014486,
+     "predicted_raw": 1.3141012636172291,
+     "error_raw_pct": 7.716862160205821,
+     "alpha_fit": 0.855216706607133,
+     "host_overhead_ms": 0.05280396241384277,
+     "cycle_overhead_ms": 0.8928786041368453,
+     "tokens_per_cycle_measured": 2.5668449197860963
+    },
+    {
+     "task": "code",
+     "temperature": 0.0,
+     "gamma": 3,
+     "measured": 1.275128969896239,
+     "predicted": 1.2487589156371905,
+     "error_pct": -2.0680303625439693,
+     "predicted_raw": 1.312304280008562,
+     "error_raw_pct": 2.9154156944099685,
+     "alpha_fit": 0.8554430050152861,
+     "host_overhead_ms": 0.05280396241384277,
+     "cycle_overhead_ms": 0.9272832073916912,
+     "tokens_per_cycle_measured": 3.1683168316831685
+    },
+    {
+     "task": "code",
+     "temperature": 0.0,
+     "gamma": 4,
+     "measured": 1.2344378179102258,
+     "predicted": 1.2339975518216584,
+     "error_pct": -0.035665311138370875,
+     "predicted_raw": 1.28592811383237,
+     "error_raw_pct": 4.171153473676936,
+     "alpha_fit": 0.8551846358519409,
+     "host_overhead_ms": 0.05280396241384277,
+     "cycle_overhead_ms": 0.9117147628946684,
+     "tokens_per_cycle_measured": 3.67816091954023
+    },
+    {
+     "task": "code",
+     "temperature": 0.0,
+     "gamma": 6,
+     "measured": 1.1451435211899152,
+     "predicted": 1.157938101225947,
+     "error_pct": 1.1172905229151568,
+     "predicted_raw": 1.1936693138231749,
+     "error_raw_pct": 4.2375293345620655,
+     "alpha_fit": 0.8548515675726334,
+     "host_overhead_ms": 0.05280396241384277,
+     "cycle_overhead_ms": 0.8846621555622888,
+     "tokens_per_cycle_measured": 4.423963133640553
+    },
+    {
+     "task": "code",
+     "temperature": 0.0,
+     "gamma": 8,
+     "measured": 1.0547934233114598,
+     "predicted": 1.109747161811614,
+     "error_pct": 5.20990530331809,
+     "predicted_raw": 1.1413740686441767,
+     "error_raw_pct": 8.208303485710239,
+     "alpha_fit": 0.8539074714339625,
+     "host_overhead_ms": 0.05280396241384277,
+     "cycle_overhead_ms": 1.0111140169300623,
+     "tokens_per_cycle_measured": 4.974093264248705
+    },
+    {
+     "task": "code",
+     "temperature": 0.7,
+     "gamma": 1,
+     "measured": 1.1670975616911454,
+     "predicted": 1.1179622563723661,
+     "error_pct": -4.210042667519702,
+     "predicted_raw": 1.243715552481091,
+     "error_raw_pct": 6.564831707721566,
+     "alpha_fit": 0.8563662483611539,
+     "host_overhead_ms": 0.0059274510325240184,
+     "cycle_overhead_ms": 1.2554785779139883,
+     "tokens_per_cycle_measured": 1.8426103646833014
+    },
+    {
+     "task": "code",
+     "temperature": 0.7,
+     "gamma": 2,
+     "measured": 1.232744611723108,
+     "predicted": 1.2152789530696482,
+     "error_pct": -1.4168107884930567,
+     "predicted_raw": 1.3121853238701202,
+     "error_raw_pct": 6.444214916175656,
+     "alpha_fit": 0.8551995460896084,
+     "host_overhead_ms": 0.0059274510325240184,
+     "cycle_overhead_ms": 1.164661207645996,
+     "tokens_per_cycle_measured": 2.5531914893617023
+    },
+    {
+     "task": "code",
+     "temperature": 0.7,
+     "gamma": 3,
+     "measured": 1.231556513933114,
+     "predicted": 1.2449054515320028,
+     "error_pct": 1.0839078392153974,
+     "predicted_raw": 1.3239762335184362,
+     "error_raw_pct": 7.504301957704686,
+     "alpha_fit": 0.8561773267968084,
+     "host_overhead_ms": 0.0059274510325240184,
+     "cycle_overhead_ms": 1.1455689730905945,
+     "tokens_per_cycle_measured": 3.1270358306188926
+    },
+    {
+     "task": "code",
+     "temperature": 0.7,
+     "gamma": 4,
+     "measured": 1.1902471031353923,
+     "predicted": 1.236398035768038,
+     "error_pct": 3.877424486988729,
+     "predicted_raw": 1.2974392495717872,
+     "error_raw_pct": 9.0058733311785,
+     "alpha_fit": 0.8556470396630234,
+     "host_overhead_ms": 0.0059274510325240184,
+     "cycle_overhead_ms": 1.0580523494118348,
+     "tokens_per_cycle_measured": 3.6363636363636362
+    },
+    {
+     "task": "code",
+     "temperature": 0.7,
+     "gamma": 6,
+     "measured": 1.192305670130604,
+     "predicted": 1.166976576255686,
+     "error_pct": -2.1243792183042682,
+     "predicted_raw": 1.2090840278829282,
+     "error_raw_pct": 1.4072194884795175,
+     "alpha_fit": 0.8525759758111408,
+     "host_overhead_ms": 0.0059274510325240184,
+     "cycle_overhead_ms": 1.0226790225413058,
+     "tokens_per_cycle_measured": 4.5933014354066986
+    },
+    {
+     "task": "code",
+     "temperature": 0.7,
+     "gamma": 8,
+     "measured": 1.0872316141912788,
+     "predicted": 1.110663903591469,
+     "error_pct": 2.1552251695348206,
+     "predicted_raw": 1.144685456894874,
+     "error_raw_pct": 5.284416121980735,
+     "alpha_fit": 0.8526251436451038,
+     "host_overhead_ms": 0.0059274510325240184,
+     "cycle_overhead_ms": 1.0744920083905043,
+     "tokens_per_cycle_measured": 5.133689839572193
+    },
+    {
+     "task": "math",
+     "temperature": 0.0,
+     "gamma": 1,
+     "measured": 1.2344642008316569,
+     "predicted": 1.183777657521457,
+     "error_pct": -4.10595489735972,
+     "predicted_raw": 1.2975260770150288,
+     "error_raw_pct": 5.108441066244545,
+     "alpha_fit": 0.9458914277774454,
+     "host_overhead_ms": 0.07891306886449473,
+     "cycle_overhead_ms": 1.086431037608705,
+     "tokens_per_cycle_measured": 1.93158953722334
+    },
+    {
+     "task": "math",
+     "temperature": 0.0,
+     "gamma": 2,
+     "measured": 1.344849279824951,
+     "predicted": 1.3568310402506571,
+     "error_pct": 0.8909370444296759,
+     "predicted_raw": 1.4385606104393662,
+     "error_raw_pct": 6.968166025758142,
+     "alpha_fit": 0.9446544080219177,
+     "host_overhead_ms": 0.07891306886449473,
+     "cycle_overhead_ms": 0.8928786041368453,
+     "tokens_per_cycle_measured": 2.807017543859649
+    },
+    {
+     "task": "math",
+     "temperature": 0.0,
+     "gamma": 3,
+     "measured": 1.433737945163578,
+     "predicted": 1.4385043327134104,
+     "error_pct": 0.3324448213085737,
+     "predicted_raw": 1.5112956016275787,
+     "error_raw_pct": 5.409472262739889,
+     "alpha_fit": 0.9461106463445551,
+     "host_overhead_ms": 0.07891306886449473,
+     "cycle_overhead_ms": 0.9272832073916912,
+     "tokens_per_cycle_measured": 3.595505617977528
+    },
+    {
+     "task": "math",
+     "temperature": 0.0,
+     "gamma": 4,
+     "measured": 1.4940104706067097,
+     "predicted": 1.4793628198236124,
+     "error_pct": -0.9804249080763761,
+     "predicted_raw": 1.541266797538088,
+     "error_raw_pct": 3.1630519237383816,
+     "alpha_fit": 0.9426997415824635,
+     "host_overhead_ms": 0.07891306886449473,
+     "cycle_overhead_ms": 0.9117147628946684,
+     "tokens_per_cycle_measured": 4.465116279069767
+    },
+    {
+     "task": "math",
+     "temperature": 0.0,
+     "gamma": 6,
+     "measured": 1.467427911209639,
+     "predicted": 1.5210307960758676,
+     "error_pct": 3.652846211848486,
+     "predicted_raw": 1.5676749592968455,
+     "error_raw_pct": 6.831480260217376,
+     "alpha_fit": 0.9446023760987892,
+     "host_overhead_ms": 0.07891306886449473,
+     "cycle_overhead_ms": 0.8846621555622888,
+     "tokens_per_cycle_measured": 5.714285714285714
+    },
+    {
+     "task": "math",
+     "temperature": 0.0,
+     "gamma": 8,
+     "measured": 1.5476766399936583,
+     "predicted": 1.5122409386274394,
+     "error_pct": -2.2896062685525953,
+     "predicted_raw": 1.5550333860586285,
+     "error_raw_pct": 0.4753412873764322,
+     "alpha_fit": 0.9441136091774464,
+     "host_overhead_ms": 0.07891306886449473,
+     "cycle_overhead_ms": 1.0111140169300623,
+     "tokens_per_cycle_measured": 7.007299270072993
+    },
+    {
+     "task": "math",
+     "temperature": 0.7,
+     "gamma": 1,
+     "measured": 1.20821691397193,
+     "predicted": 1.1758020074909221,
+     "error_pct": -2.682871436921554,
+     "predicted_raw": 1.308209836174235,
+     "error_raw_pct": 8.276073695540726,
+     "alpha_fit": 0.9334722384267161,
+     "host_overhead_ms": 0.0,
+     "cycle_overhead_ms": 1.2554785779139883,
+     "tokens_per_cycle_measured": 1.9227642276422765
+    },
+    {
+     "task": "math",
+     "temperature": 0.7,
+     "gamma": 2,
+     "measured": 1.3174086374468776,
+     "predicted": 1.3382096127241907,
+     "error_pct": 1.5789311445251417,
+     "predicted_raw": 1.4450532826202933,
+     "error_raw_pct": 9.689070007980932,
+     "alpha_fit": 0.9337623815844974,
+     "host_overhead_ms": 0.0,
+     "cycle_overhead_ms": 1.164661207645996,
+     "tokens_per_cycle_measured": 2.777126099706745
+    },
+    {
+     "task": "math",
+     "temperature": 0.7,
+     "gamma": 3,
+     "measured": 1.38125916513378,
+     "predicted": 1.4127370083590967,
+     "error_pct": 2.278923754490919,
+     "predicted_raw": 1.5025911916309784,
+     "error_raw_pct": 8.7841608265779,
+     "alpha_fit": 0.9330078869727497,
+     "host_overhead_ms": 0.0,
+     "cycle_overhead_ms": 1.1455689730905945,
+     "tokens_per_cycle_measured": 3.5555555555555554
+    },
+    {
+     "task": "math",
+     "temperature": 0.7,
+     "gamma": 4,
+     "measured": 1.439312592233315,
+     "predicted": 1.4503017965650504,
+     "error_pct": 0.7635036607776776,
+     "predicted_raw": 1.522024808942617,
+     "error_raw_pct": 5.7466471950308735,
+     "alpha_fit": 0.9310260537608442,
+     "host_overhead_ms": 0.0,
+     "cycle_overhead_ms": 1.0580523494118348,
+     "tokens_per_cycle_measured": 4.383561643835616
+    },
+    {
+     "task": "math",
+     "temperature": 0.7,
+     "gamma": 6,
+     "measured": 1.4194908219266322,
+     "predicted": 1.466982594184464,
+     "error_pct": 3.3456906888184523,
+     "predicted_raw": 1.519976556017719,
+     "error_raw_pct": 7.078998506992844,
+     "alpha_fit": 0.9320580071548555,
+     "host_overhead_ms": 0.0,
+     "cycle_overhead_ms": 1.0226790225413058,
+     "tokens_per_cycle_measured": 5.853658536585366
+    },
+    {
+     "task": "math",
+     "temperature": 0.7,
+     "gamma": 8,
+     "measured": 1.3966863545915476,
+     "predicted": 1.4146748073603699,
+     "error_pct": 1.28793789025618,
+     "predicted_raw": 1.4580711133531337,
+     "error_raw_pct": 4.395028172201031,
+     "alpha_fit": 0.9340724725215189,
+     "host_overhead_ms": 0.0,
+     "cycle_overhead_ms": 1.0744920083905043,
+     "tokens_per_cycle_measured": 6.620689655172414
+    },
+    {
+     "task": "summarize",
+     "temperature": 0.0,
+     "gamma": 1,
+     "measured": 1.0779239149559208,
+     "predicted": 1.0447419095452004,
+     "error_pct": -3.078325376246733,
+     "predicted_raw": 1.1466498304736563,
+     "error_raw_pct": 6.375766838844645,
+     "alpha_fit": 0.7460817635368986,
+     "host_overhead_ms": 0.0,
+     "cycle_overhead_ms": 1.086431037608705,
+     "tokens_per_cycle_measured": 1.7648809523809523
+    },
+    {
+     "task": "summarize",
+     "temperature": 0.0,
+     "gamma": 2,
+     "measured": 1.059568655077016,
+     "predicted": 1.0941576058406992,
+     "error_pct": 3.2644369572417222,
+     "predicted_raw": 1.161288752080786,
+     "error_raw_pct": 9.600142144293262,
+     "alpha_fit": 0.7495510214080849,
+     "host_overhead_ms": 0.0,
+     "cycle_overhead_ms": 0.8928786041368453,
+     "tokens_per_cycle_measured": 2.269230769230769
+    },
+    {
+     "task": "summarize",
+     "temperature": 0.0,
+     "gamma": 3,
+     "measured": 1.0166187572873284,
+     "predicted": 1.0760260208731014,
+     "error_pct": 5.843612776169013,
+     "predicted_raw": 1.1316248192566727,
+     "error_raw_pct": 11.312604764072827,
+     "alpha_fit": 0.746728420793793,
+     "host_overhead_ms": 0.0,
+     "cycle_overhead_ms": 0.9272832073916912,
+     "tokens_per_cycle_measured": 2.683257918552036
+    },
+    {
+     "task": "summarize",
+     "temperature": 0.0,
+     "gamma": 4,
+     "measured": 0.940305660955652,
+     "predicted": 1.032533755299596,
+     "error_pct": 9.808310018064821,
+     "predicted_raw": 1.076760760946321,
+     "error_raw_pct": 14.511781185278288,
+     "alpha_fit": 0.7504131271792709,
+     "host_overhead_ms": 0.0,
+     "cycle_overhead_ms": 0.9117147628946684,
+     "tokens_per_cycle_measured": 2.9207920792079207
+    },
+    {
+     "task": "summarize",
+     "temperature": 0.0,
+     "gamma": 6,
+     "measured": 0.8416166065018786,
+     "predicted": 0.9074450625452184,
+     "error_pct": 7.821667910873479,
+     "predicted_raw": 0.9360495136037393,
+     "error_raw_pct": 11.220418700429944,
+     "alpha_fit": 0.7481154993207326,
+     "host_overhead_ms": 0.0,
+     "cycle_overhead_ms": 0.8846621555622888,
+     "tokens_per_cycle_measured": 3.396551724137931
+    },
+    {
+     "task": "summarize",
+     "temperature": 0.0,
+     "gamma": 8,
+     "measured": 0.7649589660168217,
+     "predicted": 0.7836252514001604,
+     "error_pct": 2.4401681936659885,
+     "predicted_raw": 0.8065147730442142,
+     "error_raw_pct": 5.432423028358707,
+     "alpha_fit": 0.749239406723324,
+     "host_overhead_ms": 0.0,
+     "cycle_overhead_ms": 1.0111140169300623,
+     "tokens_per_cycle_measured": 3.5939393939393938
+    },
+    {
+     "task": "summarize",
+     "temperature": 0.7,
+     "gamma": 1,
+     "measured": 1.1035116304157173,
+     "predicted": 1.048037903878142,
+     "error_pct": -5.027017840915472,
+     "predicted_raw": 1.1661857408488665,
+     "error_raw_pct": 5.679515168275885,
+     "alpha_fit": 0.7531386997612796,
+     "host_overhead_ms": 0.0,
+     "cycle_overhead_ms": 1.2554785779139883,
+     "tokens_per_cycle_measured": 1.7507507507507507
+    },
+    {
+     "task": "summarize",
+     "temperature": 0.7,
+     "gamma": 2,
+     "measured": 1.130465370205738,
+     "predicted": 1.0855817764230242,
+     "error_pct": -3.9703643265556314,
+     "predicted_raw": 1.172487087249713,
+     "error_raw_pct": 3.7172051574058806,
+     "alpha_fit": 0.7470751862237077,
+     "host_overhead_ms": 0.0,
+     "cycle_overhead_ms": 1.164661207645996,
+     "tokens_per_cycle_measured": 2.390557939914163
+    },
+    {
+     "task": "summarize",
+     "temperature": 0.7,
+     "gamma": 3,
+     "measured": 1.034713601678205,
+     "predicted": 1.0781613591501436,
+     "error_pct": 4.199012886413253,
+     "predicted_raw": 1.14702680305917,
+     "error_raw_pct": 10.854520632453635,
+     "alpha_fit": 0.7550085330703156,
+     "host_overhead_ms": 0.0,
+     "cycle_overhead_ms": 1.1455689730905945,
+     "tokens_per_cycle_measured": 2.6682464454976302
+    },
+    {
+     "task": "summarize",
+     "temperature": 0.7,
+     "gamma": 4,
+     "measured": 1.0028006651262602,
+     "predicted": 1.0302504048514367,
+     "error_pct": 2.7373076903295006,
+     "predicted_raw": 1.0814240024024577,
+     "error_raw_pct": 7.840375461487977,
+     "alpha_fit": 0.7532861203938909,
+     "host_overhead_ms": 0.0,
+     "cycle_overhead_ms": 1.0580523494118348,
+     "tokens_per_cycle_measured": 3.019704433497537
+    },
+    {
+     "task": "summarize",
+     "temperature": 0.7,
+     "gamma": 6,
+     "measured": 0.841815070603073,
+     "predicted": 0.9213586435080597,
+     "error_pct": 9.449055461551906,
+     "predicted_raw": 0.9549763915271317,
+     "error_raw_pct": 13.442539207927258,
+     "alpha_fit": 0.7565501623870129,
+     "host_overhead_ms": 0.0,
+     "cycle_overhead_ms": 1.0226790225413058,
+     "tokens_per_cycle_measured": 3.3254437869822486
+    },
+    {
+     "task": "summarize",
+     "temperature": 0.7,
+     "gamma": 8,
+     "measured": 0.7558355725547861,
+     "predicted": 0.7636661660075723,
+     "error_pct": 1.0360181151990775,
+     "predicted_raw": 0.7874068058380661,
+     "error_raw_pct": 4.176997541484677,
+     "alpha_fit": 0.7528396943821887,
+     "host_overhead_ms": 0.0,
+     "cycle_overhead_ms": 1.0744920083905043,
+     "tokens_per_cycle_measured": 3.6774193548387095
+    }
+   ],
+   "gamma_choice": [
+    {
+     "task": "chat",
+     "temperature": 0.0,
+     "chosen_gamma": 2,
+     "best_gamma": 1,
+     "speedup_at_chosen": 1.0471232134294064,
+     "best_speedup": 1.076033652317738,
+     "regret_pct": 2.686759733402355
+    },
+    {
+     "task": "chat",
+     "temperature": 0.7,
+     "chosen_gamma": 2,
+     "best_gamma": 1,
+     "speedup_at_chosen": 1.0354629913793938,
+     "best_speedup": 1.0532168333498948,
+     "regret_pct": 1.685677764381388
+    },
+    {
+     "task": "code",
+     "temperature": 0.0,
+     "chosen_gamma": 3,
+     "best_gamma": 3,
+     "speedup_at_chosen": 1.275128969896239,
+     "best_speedup": 1.275128969896239,
+     "regret_pct": 0.0
+    },
+    {
+     "task": "code",
+     "temperature": 0.7,
+     "chosen_gamma": 3,
+     "best_gamma": 2,
+     "speedup_at_chosen": 1.231556513933114,
+     "best_speedup": 1.232744611723108,
+     "regret_pct": 0.09637825861865679
+    },
+    {
+     "task": "math",
+     "temperature": 0.0,
+     "chosen_gamma": 6,
+     "best_gamma": 8,
+     "speedup_at_chosen": 1.467427911209639,
+     "best_speedup": 1.5476766399936583,
+     "regret_pct": 5.185109519023834
+    },
+    {
+     "task": "math",
+     "temperature": 0.7,
+     "chosen_gamma": 6,
+     "best_gamma": 4,
+     "speedup_at_chosen": 1.4194908219266322,
+     "best_speedup": 1.439312592233315,
+     "regret_pct": 1.3771692413199976
+    },
+    {
+     "task": "summarize",
+     "temperature": 0.0,
+     "chosen_gamma": 2,
+     "best_gamma": 1,
+     "speedup_at_chosen": 1.059568655077016,
+     "best_speedup": 1.0779239149559208,
+     "regret_pct": 1.7028344602276757
+    },
+    {
+     "task": "summarize",
+     "temperature": 0.7,
+     "chosen_gamma": 2,
+     "best_gamma": 2,
+     "speedup_at_chosen": 1.130465370205738,
+     "best_speedup": 1.130465370205738,
+     "regret_pct": 0.0
+    }
+   ],
+   "summary": {
+    "n": 48,
+    "mae_pct": 3.054160346723075,
+    "max_abs_error_pct": 9.808310018064821,
+    "mae_raw_pct": 6.46078108368188,
+    "max_abs_error_raw_pct": 14.511781185278288,
+    "best_measured": 1.5476766399936583,
+    "gamma_regret_mean_pct": 1.5917411221217383,
+    "gamma_regret_max_pct": 5.185109519023834,
+    "best_config": {
+     "task": "math",
+     "temperature": 0.0,
+     "gamma": 8
     }
    }
   }

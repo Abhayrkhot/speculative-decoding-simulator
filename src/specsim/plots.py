@@ -301,9 +301,6 @@ def combined_validation_plot(
     ax.set_aspect("equal")
     ax.set_xlabel("measured decode speedup (x)")
     ax.set_ylabel("predicted speedup (x)")
-    ax.set_title(title or "Predicted vs measured, every task x temperature x gamma", loc="left")
+    ax.set_title(title or "Predicted vs measured speedup (dashed: y = x)", loc="left")
     ax.legend(loc="upper left")
-    ax.text(
-        hi - 0.03 * (hi - lo), hi - 0.08 * (hi - lo), "y = x", ha="right", fontsize=8, color=INK_2
-    )
     _save(fig, path)

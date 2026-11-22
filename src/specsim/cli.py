@@ -190,7 +190,7 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
 def cmd_validate(args: argparse.Namespace) -> int:
     from .calibrate import validate
 
-    rep = validate(args.results, acceptance=args.acceptance)
+    rep = validate(args.results, acceptance=args.acceptance, acceptance_from=args.acceptance_from)
     if args.plot:
         from .plots import validation_plot
 
@@ -278,6 +278,11 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["positional", "iid"],
         default="positional",
         help="acceptance model fitted from traces of the *other* gammas",
+    )
+    v.add_argument(
+        "--acceptance-from",
+        metavar="RESULTS",
+        help="take acceptance traces from another benchmark run (e.g. eager mode)",
     )
     v.add_argument("--plot", help="write predicted-vs-measured PNG")
     v.add_argument("--json", action="store_true")

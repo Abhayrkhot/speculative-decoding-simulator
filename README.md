@@ -9,7 +9,14 @@ benchmark harness in [`bench/`](bench/) runs a real draft/target pair on a GPU,
 and `specsim validate` predicts every measured speedup from parameters it never
 fitted to those speedups.
 
-<!-- GPU_HEADLINE -->
+**Headline result.** On an NVIDIA H200 with Qwen2.5 models (0.5B draft; 7B and
+32B targets), `specsim` predicted 104 measured speedups (2 model pairs × 4 tasks
+× 2 temperatures × 6–7 draft lengths) with **2.4% mean absolute error**, 94 of
+104 within 5%. Choosing the draft length from its predictions gets within 0.6%
+of the best measured speedup on average. It also correctly predicts that the
+same draft model speeds a 32B target up by as much as **1.65×** but *slows down* a 7B
+target in eager PyTorch.
+<!-- GRAPH_HEADLINE -->
 
 ## How speculative decoding works, and what the simulator models
 
@@ -131,7 +138,71 @@ batch 1, to 3.5x (`gamma = 7`) at batch 32, to 1.6x (`gamma = 1`) at batch 256:
 
 ![Batch scaling](docs/batch_scaling.png)
 
-<!-- GPU_RESULTS -->
+### 3. Real GPUs: predicted vs measured
+
+**Setup.** Qwen2.5-0.5B-Instruct drafting for Qwen2.5-7B-Instruct and
+Qwen2.5-32B-Instruct, bf16, batch size 1, one NVIDIA H200 (Northeastern's
+Explorer cluster). 20 prompts in four task families (code, math, chat,
+summarization), up to 192 new tokens, greedy and T = 0.7.
+
+**Out-of-sample protocol.** Each prediction is built only from:
+
+- acceptance fitted on *other prompts* at *other* draft lengths;
+- latency from a standalone forward-pass profile;
+- per-forward host overhead from the `gamma = 0` runs;
+- a per-cycle host overhead fitted on the other draft lengths.
+
+The measured speculative time of the configuration being predicted is never
+used. "Raw" error drops the per-cycle term, so it uses no speculative timing data
+at all.
+
+![Predicted vs measured](docs/predicted_vs_measured.png)
+
+| Draft → target, runtime | Draft / target step | c | Configs | Best measured | Mean / max error | Raw error |
+|---|---|---|---|---|---|---|
+| 0.5B → 7B, eager | 9.6 / 11.5 ms | 0.83 | 56 | 0.95× (never faster) | 2.3% / 7.4% | 3.7% |
+| 0.5B → 32B, eager | 9.4 / 26.2 ms | 0.36 | 48 | 1.65× (math, γ = 6) | 2.5% / 8.8% | 4.5% |
+<!-- GRAPH_ROWS -->
+
+Greedy acceptance rate by task (T = 0.7 is within 0.04):
+
+| Task | 0.5B → 7B | 0.5B → 32B |
+|---|---|---|
+| math | 0.94 | 0.93 |
+| code | 0.85 | 0.85 |
+| summarize | 0.76 | 0.75 |
+| chat | 0.72 | 0.66 |
+
+What the measurements show:
+
+1. **The draft/target cost ratio, not acceptance, decides whether speculation
+   pays.** Acceptance is nearly the same for both targets, yet the 7B target never
+   gets faster. In eager PyTorch a 0.5B draft step costs 9.6 ms, 83% of a 7B
+   target step: both are dominated by per-layer kernel-launch overhead rather
+   than FLOPs or memory traffic. The 32B target step is 2.8× more expensive than
+   the 7B one, which leaves room for a 1.65× speedup.
+2. **The task matters as much as the model.** Math (alpha ≈ 0.93) reaches 1.65× and
+   keeps improving up to `gamma` = 6–8. Chat (alpha ≈ 0.66) peaks at 1.09–1.12×
+   at `gamma` = 2 and is *slower* than plain decoding for `gamma` ≥ 4.
+3. **Acceptance does not decay with draft position.** It is flat or slightly
+   rising: a draft that has matched so far tends to keep matching.
+   [Figure](docs/acceptance_by_position.png).
+4. **Lossless in exact arithmetic, not bit-exact in bf16.** Greedy speculative
+   output matched target-only output token for token in only 38% (32B) to 59%
+   (7B) of runs; on average the two agree for the first 63–76% of tokens. Scoring
+   `gamma + 1` tokens in one pass rounds differently from one-token decoding, so
+   near-ties between candidate tokens flip. The identical-model sanity check
+   (100% acceptance, identical output) shows the algorithm itself is exact.
+5. **Choosing `gamma` from predictions works.** Picking the `gamma` with the best
+   predicted speedup loses 0.6% of the best measured speedup on average (worst
+   case 2.7%).
+
+Per-`gamma` curves for the 32B pair (the 7B pair is
+[here](docs/validation_0.5b_7b.png)):
+
+![Validation, 0.5B to 32B](docs/validation_0.5b_32b.png)
+
+<!-- GRAPH_SECTION -->
 
 ## Reproducing the GPU benchmark
 
@@ -178,8 +249,13 @@ How the harness works:
   depends on the draft position, which is modelled.
 - Single-sequence drafting only. Tree drafting (SpecInfer, Medusa, EAGLE) would
   need a different acceptance model.
-- The linear latency model is fitted at one context length; KV-cache growth over
-  very long generations is not modelled.
+- Latency is profiled at fixed context lengths; KV-cache growth over very long
+  generations is not modelled.
+- 20 prompts × 192 tokens per configuration is a modest sample, so per-row
+  errors include a few percent of measurement noise.
+- No comparison with Hugging Face's built-in assisted generation. It rejects
+  this pair as "different tokenizers" because the vocab sizes differ (151,936
+  vs 152,064) and would switch to a different algorithm.
 
 ## Project layout
 

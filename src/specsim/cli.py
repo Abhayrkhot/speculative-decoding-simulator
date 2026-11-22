@@ -209,6 +209,10 @@ def cmd_validate(args: argparse.Namespace) -> int:
         f"without per-cycle overhead {s['mae_raw_pct']:.1f}% (max "
         f"{s['max_abs_error_raw_pct']:.1f}%); best measured {s['best_measured']:.2f}x"
     )
+    print(
+        f"choosing gamma by prediction loses {s['gamma_regret_mean_pct']:.1f}% of the best "
+        f"measured speedup on average (worst {s['gamma_regret_max_pct']:.1f}%)"
+    )
     return 0
 
 

@@ -71,6 +71,8 @@ def test_validate_predicts_out_of_sample(bench_results: dict[str, Any]) -> None:
     rep = validate(bench_results, trials=1000)
     assert rep["summary"]["n"] == 8
     assert rep["summary"]["mae_pct"] < 4.0, rep["rows"]
+    assert len(rep["gamma_choice"]) == 2
+    assert 0.0 <= rep["summary"]["gamma_regret_mean_pct"] < 5.0
     iid = validate(bench_results, acceptance="iid", trials=1000)
     # Position-dependent acceptance is the truth here, so it should predict better.
     assert rep["summary"]["mae_pct"] <= iid["summary"]["mae_pct"]

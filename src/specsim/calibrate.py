@@ -320,11 +320,31 @@ def validate(
     mae, mx = stats("error_pct")
     mae_raw, mx_raw = stats("error_raw_pct")
     best = max(rows, key=lambda r: r["measured"]) if rows else None
+
+    # Would the simulator have picked a good gamma? Compare the measured
+    # speedup at the predicted-best gamma with the best measured speedup.
+    choices = []
+    for task, temp in sorted({(r["task"], r["temperature"]) for r in rows}):
+        grp = [r for r in rows if (r["task"], r["temperature"]) == (task, temp)]
+        pick = max(grp, key=lambda r: r["predicted"])
+        top = max(grp, key=lambda r: r["measured"])
+        choices.append(
+            {
+                "task": task,
+                "temperature": temp,
+                "chosen_gamma": pick["gamma"],
+                "best_gamma": top["gamma"],
+                "speedup_at_chosen": pick["measured"],
+                "best_speedup": top["measured"],
+                "regret_pct": 100.0 * (1 - pick["measured"] / top["measured"]),
+            }
+        )
     return {
         "meta": res["meta"],
         "acceptance_model": acceptance,
         "latency_context": ctx,
         "rows": rows,
+        "gamma_choice": choices,
         "summary": {
             "n": len(rows),
             "mae_pct": mae,
@@ -332,6 +352,12 @@ def validate(
             "mae_raw_pct": mae_raw,
             "max_abs_error_raw_pct": mx_raw,
             "best_measured": best["measured"] if best else float("nan"),
+            "gamma_regret_mean_pct": (
+                float(np.mean([c["regret_pct"] for c in choices])) if choices else float("nan")
+            ),
+            "gamma_regret_max_pct": (
+                float(np.max([c["regret_pct"] for c in choices])) if choices else float("nan")
+            ),
             "best_config": (
                 {k: best[k] for k in ("task", "temperature", "gamma")} if best else None
             ),

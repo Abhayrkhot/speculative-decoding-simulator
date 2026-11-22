@@ -1,0 +1,67 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "specsim"
+version = "0.2.0"
+description = "Calibrated simulator for speculative decoding speedups in LLM inference"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Abhay Khot" }]
+keywords = ["llm", "inference", "speculative-decoding", "simulation"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = ["numpy>=1.24"]
+
+[project.optional-dependencies]
+plot = ["matplotlib>=3.7"]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=5",
+    "hypothesis>=6.100",
+    "scipy>=1.10",
+    "matplotlib>=3.7",
+    "ruff>=0.6",
+    "mypy>=1.10",
+]
+bench = ["torch>=2.3", "transformers>=4.45", "accelerate>=0.30"]
+
+[project.scripts]
+specsim = "specsim.cli:main"
+
+[project.urls]
+Repository = "https://github.com/Abhayrkhot/speculative-decoding-simulator"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/specsim"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "SIM", "RUF", "NPY"]
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+files = ["src/specsim"]
+
+[[tool.mypy.overrides]]
+module = ["matplotlib", "matplotlib.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["specsim"]
+omit = ["*/plots.py"]

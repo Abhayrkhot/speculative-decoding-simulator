@@ -1,120 +1,323 @@
-# Speculative Decoding Simulator
+# specsim: speculative decoding, simulated and checked against real GPUs
 
-## Overview
+[![CI](https://github.com/Abhayrkhot/speculative-decoding-simulator/actions/workflows/ci.yml/badge.svg)](https://github.com/Abhayrkhot/speculative-decoding-simulator/actions/workflows/ci.yml)
 
-Speculative decoding is an inference‑time optimisation that pairs a
-large **target model** with a smaller **draft model**【231741701474535†L60-L66】.  The
-draft model proposes several tokens ahead, and the target model
-verifies them in parallel.  If the proposed tokens match the target’s
-own predictions, they are accepted; otherwise, the target recomputes
-the output from the last accepted token【231741701474535†L115-L125】.  This
-draft‑then‑verify pattern reduces the number of expensive target model
-forward passes, leading to up to 3× faster inference【231741701474535†L60-L74】.
+`specsim` predicts how much faster speculative decoding makes LLM inference for a
+given draft/target pair, hardware and workload, and tells you which draft length
+to use. It is calibrated from real measurements and validated out of sample: the
+benchmark harness in [`bench/`](bench/) runs a real draft/target pair on a GPU,
+and `specsim validate` predicts every measured speedup from parameters it never
+fitted to those speedups.
 
-This project implements a **speculative decoding simulator**.  It
-models the acceptance of draft tokens with a probability α (the
-**acceptance rate**)【231741701474535†L140-L149】 and measures the time spent
-drafting and verifying tokens.  By comparing the speculative time to
-a baseline where the target model generates every token, you can
-explore how acceptance rate, draft size (γ) and per‑token latencies
-affect speedup.  When α is high, speculative decoding achieves
-significant speedups【231741701474535†L169-L170】.  When α is low, the
-overhead of drafting wasted tokens can outweigh the benefits and
-slow down inference.
+**Headline result.** On an NVIDIA H200 with Qwen2.5 models (0.5B draft; 7B and
+32B targets; eager PyTorch and CUDA graphs), `specsim` predicted 200 measured
+speedups, ranging from 0.40× to **3.26×**, with **2.7% mean absolute error**:
+170 of 200 within 5%, and all but one within 10%. Choosing the draft length from
+its predictions gets within 1.1% of the best measured speedup on average.
+Acceptance measured once also carries over across runtimes: predicting the
+CUDA-graph runs from the eager runs' acceptance is just as accurate.
 
-## Why this matters
+## How speculative decoding works, and what the simulator models
 
-Transformers generate text autoregressively, producing one token at a
-time【231741701474535†L76-L88】.  Each forward pass through a large model can be
-expensive, and GPU compute often sits idle while waiting on memory
-access【231741701474535†L101-L103】.  Speculative decoding parallelises part of
-this process by letting a lightweight draft model propose multiple
-tokens ahead and verifying them in one step【231741701474535†L115-L125】.
-Understanding this technique and its trade‑offs helps inference
-engineers choose the right draft model size, acceptance threshold and
-batching strategy for latency‑sensitive applications like chatbots and
-code completion tools.
+Autoregressive decoding with a large *target* model is memory-bound: each token
+costs one full forward pass, and that pass costs about the same whether it scores
+one token or a handful. Speculative decoding (Leviathan et al., 2023; Chen et al.,
+2023) exploits this:
 
-## Features
+1. A small **draft** model proposes `gamma` tokens, one at a time:
+   `gamma * t_draft(1)`.
+2. The target scores all of them in **one** forward pass: `t_target(gamma + 1)`.
+3. Drafts are accepted left to right until the first rejection. The same target
+   pass also yields one more token: the corrected token at the rejection, or a
+   bonus token if every draft was accepted. So a cycle emits `A + 1` tokens,
+   where `A` is the number of accepted drafts.
 
-* **Configurable acceptance rate** – Specify the probability that a
-  draft token is accepted by the target (α).
-* **Draft and target speeds** – Configure per‑token latencies for
-  both models to model differences in compute cost.
-* **Draft batch size (γ)** – Control how many tokens the draft model
-  proposes each cycle【231741701474535†L150-L151】.
-* **Randomised acceptance simulation** – Each token is accepted with
-  probability α until the first rejection; the target then
-  recomputes the next token.
-* **Baseline comparison** – Compute the time taken by the target
-  model alone and report the speculative speedup.
-* **Command‑line interface** – Run simulations with different
-  parameters and output results as JSON.
-* **Test suite** – Unit tests ensure that extreme acceptance rates
-  behave as expected (speedup > 1 when α=1 and < 1 when α=0).
+With temperature > 0, acceptance uses rejection sampling (accept `x` with
+probability `min(1, p(x)/q(x))`, on rejection resample from `norm(max(0, p - q))`),
+which makes the output distribution *exactly* the target's. With per-position
+acceptance probabilities `alpha_i`, the expected speedup is
 
-## Project structure
-
-```text
-06-speculative-decoding-simulator/
-├── speculative.py        # Simulation logic and CLI
-├── tests/
-│   └── test_speculative.py
-├── requirements.txt
-└── README.md
+```
+            E[A + 1] * t_target(1)                    E[A + 1] = 1 + sum_i prod_{j<=i} alpha_j
+speedup = ---------------------------------------
+          gamma * t_draft(1) + t_target(gamma + 1)
 ```
 
-## Installation
+which for i.i.d. acceptance and constant latency reduces to Leviathan et al.'s
+`(1 - alpha^(gamma+1)) / ((1 - alpha)(gamma*c + 1))`, with `c = t_draft / t_target`.
 
-Create a virtual environment and install dependencies:
+| Component | Options |
+|---|---|
+| Latency | `ConstantLatency` (the paper's assumption), `LinearLatency` (fitted from a GPU profile: fixed overhead + per-token cost), `RooflineLatency` (weights + KV-cache bytes vs FLOPs, with batch size and hardware presets) |
+| Acceptance | `IIDAcceptance(alpha)`, `PositionalAcceptance` (one `alpha` per draft position, estimated from real traces) |
+| Engine | Closed form, vectorised Monte Carlo with 95% confidence intervals, and exact rejection sampling on a toy language model |
+
+## Install
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+pip install -e ".[plot]"     # simulator + figures
+pip install -e ".[dev]"      # + tests, lint, type checking
+pip install -e ".[bench]"    # + torch/transformers for GPU benchmarks
 ```
+
+Python 3.10+. The core depends only on NumPy.
 
 ## Usage
 
-Run a speculative decoding simulation for 50 tokens with acceptance
-rate 0.6, draft speed 0.1 seconds per token, target speed 0.2
-seconds per token and draft batch size 4:
+```console
+$ specsim simulate --alpha 0.8 --gamma 4 --c 0.05 --seed 0
+speedup            2.789x  (95% CI 2.783-2.796)
+analytic speedup   2.801x  (infinite-horizon closed form)
+per-generation     p5 2.545x  p95 3.051x
+tokens per cycle   3.342
+acceptance rate    0.800  (accepted / verified)
+draft efficiency   0.591  (accepted / drafted)
+target calls saved 70.1%
+
+$ specsim optimal-gamma --alpha 0.6,0.7,0.8,0.9 --c 0.05
+alpha  best_gamma  speedup
+0.600           4    1.921
+0.700           6    2.353
+0.800           8    3.092
+0.900          13    4.674
+```
+
+Latency can be given as a cost ratio (`--c`), measured times
+(`--target-ms 25 --draft-ms 3`), or a roofline model with batch size:
 
 ```bash
-python speculative.py --tokens 50 --accept-rate 0.6 \
-    --draft-speed 0.1 --target-speed 0.2 --draft-batch-size 4 --seed 42
+specsim optimal-gamma --alpha 0.8 --roofline llama-3.1-70b llama-3.2-1b --gpu h100-sxm --batch 32
+specsim sweep --alpha 0.5:0.95:0.05 --gamma 1:10 --c 0.05 --plot heatmap.png
+specsim calibrate results/run.json        # fitted latency + acceptance per task
+specsim validate  results/run.json --plot validation.png
+specsim validate  results/graphs.json --acceptance-from results/eager.json
+specsim lossless-check                    # statistical test of rejection sampling
 ```
 
-Sample output:
+From Python:
 
-```json
-{
-  "speculative_time": 13.15,
-  "baseline_time": 10.0,
-  "speedup": 0.76
-}
+```python
+from specsim import LinearLatency, PositionalAcceptance, optimal_gamma, simulate
+
+lat = LinearLatency(target_fixed_s=0.025, target_per_token_s=0.0002, draft_fixed_s=0.004)
+acc = PositionalAcceptance.from_traces(cycles)  # [(k, n_accepted), ...] from a real run
+gamma, speedup = optimal_gamma(acc, lat)
+result = simulate(acc, gamma, lat, tokens=256, trials=2000, seed=0)
+print(result.speedup, result.speedup_ci95)
 ```
 
-By varying the acceptance rate you can observe the transition from
-speedup to slowdown.  For example, setting `--accept-rate 1.0` yields
-a speedup greater than 1, while `--accept-rate 0.0` leads to a
-slowdown, as verified in the tests.
+## Results
 
-## Running the tests
+### 1. The simulator agrees with theory
 
-Run the unit tests with `pytest`:
+Monte Carlo converges to the closed form (tested to within 1%). At 256 tokens the
+confidence intervals are narrower than the markers.
+
+![Monte Carlo vs closed form](docs/sim_vs_theory.png)
+
+The exact rejection sampler passes a chi-square test against the target's exact
+token distribution at every position and across cycle boundaries (200k sequences,
+all Bonferroni-corrected p > 0.001). Its empirical acceptance rate, 0.6798, matches
+the theoretical `1 - TV(p, q)` averaged over visited contexts, 0.6798. A
+deliberately broken variant that resamples from `p` instead of `max(0, p - q)`
+fails the same test (p < 1e-10), so the test has the power to catch the most
+common implementation bug.
+
+### 2. Where speculative decoding pays off
+
+Speedup is steep in the acceptance rate, and the best draft length grows with it.
+Compared with `gamma = 1`, the best `gamma` is worth 1.14x at `alpha = 0.5` and
+3.1x at `alpha = 0.95`:
+
+![Speedup heatmap](docs/heatmap_c005.png)
+
+Speculation trades spare compute for fewer sequential steps, so the benefit
+shrinks as batching makes decoding compute-bound. In the roofline model, a 70B
+target with a 1B draft on H100 at `alpha = 0.8` goes from 3.9x (`gamma = 11`) at
+batch 1, to 3.5x (`gamma = 7`) at batch 32, to 1.6x (`gamma = 1`) at batch 256:
+
+![Batch scaling](docs/batch_scaling.png)
+
+### 3. Real GPUs: predicted vs measured
+
+**Setup.** Qwen2.5-0.5B-Instruct drafting for Qwen2.5-7B-Instruct and
+Qwen2.5-32B-Instruct, bf16, batch size 1, one NVIDIA H200 (Northeastern's
+Explorer cluster). 20 prompts in four task families (code, math, chat,
+summarization), up to 192 new tokens, greedy and T = 0.7.
+
+**Out-of-sample protocol.** Each prediction is built only from:
+
+- acceptance fitted on *other prompts* at *other* draft lengths;
+- latency from a standalone forward-pass profile;
+- per-forward host overhead from the `gamma = 0` runs;
+- a per-cycle host overhead fitted on the other draft lengths.
+
+The measured speculative time of the configuration being predicted is never
+used. "Raw" error drops the per-cycle term, so it uses no speculative timing data
+at all.
+
+![Predicted vs measured](docs/predicted_vs_measured.png)
+
+| Draft → target, runtime | Draft / target step | c | Configs | Best measured | Mean / max error | Raw error |
+|---|---|---|---|---|---|---|
+| 0.5B → 7B, eager | 9.6 / 11.5 ms | 0.83 | 56 | 0.95× (never faster) | 2.3% / 7.4% | 3.7% |
+| 0.5B → 32B, eager | 9.4 / 26.2 ms | 0.36 | 48 | 1.65× (math, γ = 6) | 2.5% / 8.8% | 4.5% |
+| 0.5B → 7B, CUDA graphs | 3.5 / 7.6 ms | 0.46 | 48 | 1.55× (math, γ = 8) | 3.1% / 9.8% | 6.5% |
+| 0.5B → 32B, CUDA graphs | 3.5 / 25.4 ms | 0.14 | 48 | **3.26×** (math, γ = 8) | 3.1% / 12.0% | 3.9% |
+| **All** | | | **200** | | **2.7% / 12.0%** | 4.6% |
+
+"Draft / target step" is one forward pass with a single new token, and
+`c` = draft / target. CUDA graphs = static KV cache plus
+`torch.compile(mode="reduce-overhead")` for both models, so the baseline gets
+the same optimization.
+
+Greedy acceptance rate by task (T = 0.7 is within 0.04; eager and CUDA-graph
+runs agree within 0.01):
+
+| Task | 0.5B → 7B | 0.5B → 32B |
+|---|---|---|
+| math | 0.94 | 0.93 |
+| code | 0.85 | 0.85 |
+| summarize | 0.76 | 0.75 |
+| chat | 0.72 | 0.66 |
+
+What the measurements show:
+
+1. **The draft/target cost ratio, not acceptance, decides whether speculation
+   pays.** In eager PyTorch a 0.5B draft step costs 9.6 ms, 83% of a 7B target
+   step, because both are dominated by per-layer kernel-launch overhead rather
+   than FLOPs or memory traffic. The 7B pair never gets faster. CUDA graphs
+   leave acceptance unchanged but cut the draft step to 3.5 ms. The 7B pair then
+   reaches 1.55×, and the 32B pair goes from 1.65× to 3.26×. (The 32B target
+   barely changes: 26.2 to 25.4 ms, because it is limited by real weight
+   traffic.)
+2. **The task matters as much as the model.** On 32B with CUDA graphs, the best
+   speedups are math 3.26×, code 2.41×, summarize 1.93× and chat 1.67×, at best
+   `gamma` of 8, 6, 4 and 3 respectively. A single global `gamma` leaves speedup on the
+   table.
+3. **Acceptance carries over across runtimes.** It is a property of the model
+   pair, while latency is a property of the runtime. Predicting the CUDA-graph
+   runs from acceptance measured in the eager runs, plus only a latency profile
+   of the graph runtime, gives 2.7% (32B) and 2.9% (7B) mean error. Measure
+   acceptance once, then predict other runtimes or hardware from a latency
+   profile.
+4. **Acceptance does not decay with draft position.** It is flat or slightly
+   rising: a draft that has matched so far tends to keep matching.
+   [Figure](docs/acceptance_by_position.png).
+5. **Lossless in exact arithmetic, not bit-exact in bf16.** Greedy speculative
+   output matched target-only output token for token in 38–72% of runs; on
+   average the two agree for the first 63–84% of tokens. Scoring `gamma + 1`
+   tokens in one pass rounds differently from one-token decoding, so near-ties
+   flip. The identical-model sanity check (100% acceptance, identical output)
+   shows the algorithm itself is exact.
+6. **Choosing `gamma` from predictions works.** Picking the `gamma` with the
+   best predicted speedup loses 1.1% of the best measured speedup on average
+   (worst case 5.2%).
+
+Per-`gamma` curves for the 32B pair with CUDA graphs (others:
+[32B eager](docs/validation_0.5b_32b.png), [7B eager](docs/validation_0.5b_7b.png),
+[7B graphs](docs/validation_0.5b_7b_graphs.png)):
+
+![Validation, 0.5B to 32B with CUDA graphs](docs/validation_0.5b_32b_graphs.png)
+
+## Reproducing the GPU benchmark
 
 ```bash
-pytest -q
+pip install -e ".[bench]"
+python bench/spec_bench.py --draft Qwen/Qwen2.5-0.5B-Instruct \
+    --target Qwen/Qwen2.5-7B-Instruct --out results/run.json --hf-reference
+python bench/spec_bench.py ... --cuda-graphs        # static KV cache + CUDA graphs
+specsim validate results/run.json --plot docs/validation.png
+python scripts/make_figures.py results/*.json       # regenerate every figure
 ```
 
-The tests verify that the simulator produces a speedup for full
-acceptance (α=1) and a slowdown when no tokens are accepted (α=0).
+[`bench/explorer.sbatch`](bench/explorer.sbatch) is the Slurm job used on
+Northeastern's Explorer cluster:
 
-## Resume bullet
+```bash
+VENV=env126 sbatch bench/explorer.sbatch                                   # 7B, eager
+VENV=env126 TARGET=Qwen/Qwen2.5-32B-Instruct TAG=0.5b_32b_graphs \
+    BENCH_FLAGS=--cuda-graphs GAMMAS=1,2,3,4,6,8 sbatch bench/explorer.sbatch
+```
 
-Implemented a speculative decoding simulator modelling draft/token
-acceptance and measuring end‑to‑end speedup versus baseline decoding.
-The tool allows configuring acceptance rate, draft batch size and
-per‑token latencies, offers a CLI for experimentation and includes
-unit tests demonstrating the performance extremes of the technique.
+The torch wheel must match the node's driver: Explorer's driver 545 needs a
+`cu12x` build, and a newer wheel silently falls back to CPU. The harness refuses
+to run without CUDA unless you pass `--allow-cpu`.
+
+How the harness works:
+
+- It runs its own speculative decoding loop with KV-cache rollback, so it can
+  record per-cycle acceptance. Plain decoding goes through the same code path,
+  so the baseline is apples-to-apples.
+- `--cuda-graphs` gives **both** models a static KV cache and
+  `torch.compile(mode="reduce-overhead")`, with one CUDA graph per decode shape.
+  Rollback only moves the write position; stale slots are masked out.
+- Before timing a compiled path, the harness replays a greedy continuation
+  teacher-forced through every verification shape. It adds and rolls back
+  decoy tokens the way rejected drafts would, and compares each argmax with
+  eager mode. If they disagree, it refuses to run.
+- That check exists because of a real bug. In transformers 5.x, `StaticCache`
+  writes at an internal counter and ignores `cache_position`, so rolling back
+  without rewinding that counter makes attention read rejected tokens' KV.
+  On the 7B pair, acceptance fell from 0.94 to 0.78 and greedy output never
+  matched target-only output. The harness now rewinds the counter.
+- Every greedy speculative output is compared token-for-token with the
+  target-only output.
+- Sanity check: with the same model as draft and target, acceptance must be
+  100% and greedy output identical (verified on CPU and on H200 in both modes).
+
+## Limitations
+
+- Batch size 1 on the GPU side. Batched serving changes the latency model; the
+  roofline model covers this, but it is not validated against measurements.
+- CUDA-graph mode depends on transformers internals: in 5.x, `StaticCache`
+  writes at an internal counter that the harness has to rewind on rollback.
+  Other versions may behave differently. The built-in teacher-forced check
+  refuses to time a compiled path that disagrees with eager mode.
+- Acceptance is assumed independent of `gamma` and of the generation step. It
+  depends on the draft position, which is modelled.
+- Single-sequence drafting only. Tree drafting (SpecInfer, Medusa, EAGLE) would
+  need a different acceptance model.
+- Latency is profiled at fixed context lengths; KV-cache growth over very long
+  generations is not modelled.
+- 20 prompts × 192 tokens per configuration is a modest sample, so per-row
+  errors include a few percent of measurement noise.
+- No comparison with Hugging Face's built-in assisted generation. It rejects
+  this pair as "different tokenizers" because the vocab sizes differ (151,936
+  vs 152,064) and would switch to a different algorithm.
+
+## Project layout
+
+```
+src/specsim/
+  analytic.py      closed-form expectations, optimal gamma
+  simulate.py      vectorised Monte Carlo with confidence intervals
+  latency.py       constant / linear / roofline latency models, hardware presets
+  acceptance.py    i.i.d. and per-position acceptance, estimation from traces
+  sampling.py      exact rejection sampling on a toy LM, losslessness test
+  calibrate.py     fit from benchmark JSON, out-of-sample validation
+  plots.py         figures
+  cli.py           `specsim` command
+bench/             GPU benchmark harness and Slurm job
+scripts/           figure generation
+tests/             pytest + hypothesis suite
+```
+
+## Development
+
+```bash
+pip install -e ".[dev]"
+ruff check . && ruff format --check . && mypy && pytest --cov
+```
+
+## References
+
+- Y. Leviathan, M. Kalman, Y. Matias. *Fast Inference from Transformers via
+  Speculative Decoding.* ICML 2023. [arXiv:2211.17192](https://arxiv.org/abs/2211.17192)
+- C. Chen, S. Borgeaud, G. Irving, J.-B. Lespiau, L. Sifre, J. Jumper.
+  *Accelerating Large Language Model Decoding with Speculative Sampling.* 2023.
+  [arXiv:2302.01318](https://arxiv.org/abs/2302.01318)
+
+## License
+
+MIT

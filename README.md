@@ -10,13 +10,12 @@ and `specsim validate` predicts every measured speedup from parameters it never
 fitted to those speedups.
 
 **Headline result.** On an NVIDIA H200 with Qwen2.5 models (0.5B draft; 7B and
-32B targets), `specsim` predicted 104 measured speedups (2 model pairs × 4 tasks
-× 2 temperatures × 6–7 draft lengths) with **2.4% mean absolute error**, 94 of
-104 within 5%. Choosing the draft length from its predictions gets within 0.6%
-of the best measured speedup on average. It also correctly predicts that the
-same draft model speeds a 32B target up by as much as **1.65×** but *slows down* a 7B
-target in eager PyTorch.
-<!-- GRAPH_HEADLINE -->
+32B targets; eager PyTorch and CUDA graphs), `specsim` predicted 200 measured
+speedups, ranging from 0.40× to **3.26×**, with **2.7% mean absolute error**:
+170 of 200 within 5%, and all but one within 10%. Choosing the draft length from
+its predictions gets within 1.1% of the best measured speedup on average.
+Acceptance measured once also carries over across runtimes: predicting the
+CUDA-graph runs from the eager runs' acceptance is just as accurate.
 
 ## How speculative decoding works, and what the simulator models
 
@@ -91,6 +90,7 @@ specsim optimal-gamma --alpha 0.8 --roofline llama-3.1-70b llama-3.2-1b --gpu h1
 specsim sweep --alpha 0.5:0.95:0.05 --gamma 1:10 --c 0.05 --plot heatmap.png
 specsim calibrate results/run.json        # fitted latency + acceptance per task
 specsim validate  results/run.json --plot validation.png
+specsim validate  results/graphs.json --acceptance-from results/eager.json
 specsim lossless-check                    # statistical test of rejection sampling
 ```
 
@@ -162,9 +162,17 @@ at all.
 |---|---|---|---|---|---|---|
 | 0.5B → 7B, eager | 9.6 / 11.5 ms | 0.83 | 56 | 0.95× (never faster) | 2.3% / 7.4% | 3.7% |
 | 0.5B → 32B, eager | 9.4 / 26.2 ms | 0.36 | 48 | 1.65× (math, γ = 6) | 2.5% / 8.8% | 4.5% |
-<!-- GRAPH_ROWS -->
+| 0.5B → 7B, CUDA graphs | 3.5 / 7.6 ms | 0.46 | 48 | 1.55× (math, γ = 8) | 3.1% / 9.8% | 6.5% |
+| 0.5B → 32B, CUDA graphs | 3.5 / 25.4 ms | 0.14 | 48 | **3.26×** (math, γ = 8) | 3.1% / 12.0% | 3.9% |
+| **All** | | | **200** | | **2.7% / 12.0%** | 4.6% |
 
-Greedy acceptance rate by task (T = 0.7 is within 0.04):
+"Draft / target step" is one forward pass with a single new token, and
+`c` = draft / target. CUDA graphs = static KV cache plus
+`torch.compile(mode="reduce-overhead")` for both models, so the baseline gets
+the same optimization.
+
+Greedy acceptance rate by task (T = 0.7 is within 0.04; eager and CUDA-graph
+runs agree within 0.01):
 
 | Task | 0.5B → 7B | 0.5B → 32B |
 |---|---|---|
@@ -176,33 +184,41 @@ Greedy acceptance rate by task (T = 0.7 is within 0.04):
 What the measurements show:
 
 1. **The draft/target cost ratio, not acceptance, decides whether speculation
-   pays.** Acceptance is nearly the same for both targets, yet the 7B target never
-   gets faster. In eager PyTorch a 0.5B draft step costs 9.6 ms, 83% of a 7B
-   target step: both are dominated by per-layer kernel-launch overhead rather
-   than FLOPs or memory traffic. The 32B target step is 2.8× more expensive than
-   the 7B one, which leaves room for a 1.65× speedup.
-2. **The task matters as much as the model.** Math (alpha ≈ 0.93) reaches 1.65× and
-   keeps improving up to `gamma` = 6–8. Chat (alpha ≈ 0.66) peaks at 1.09–1.12×
-   at `gamma` = 2 and is *slower* than plain decoding for `gamma` ≥ 4.
-3. **Acceptance does not decay with draft position.** It is flat or slightly
+   pays.** In eager PyTorch a 0.5B draft step costs 9.6 ms, 83% of a 7B target
+   step, because both are dominated by per-layer kernel-launch overhead rather
+   than FLOPs or memory traffic. The 7B pair never gets faster. CUDA graphs
+   leave acceptance unchanged but cut the draft step to 3.5 ms. The 7B pair then
+   reaches 1.55×, and the 32B pair goes from 1.65× to 3.26×. (The 32B target
+   barely changes: 26.2 to 25.4 ms, because it is limited by real weight
+   traffic.)
+2. **The task matters as much as the model.** On 32B with CUDA graphs, the best
+   speedups are math 3.26×, code 2.41×, summarize 1.93× and chat 1.67×, at best
+   `gamma` of 8, 6, 4 and 3 respectively. A single global `gamma` leaves speedup on the
+   table.
+3. **Acceptance carries over across runtimes.** It is a property of the model
+   pair, while latency is a property of the runtime. Predicting the CUDA-graph
+   runs from acceptance measured in the eager runs, plus only a latency profile
+   of the graph runtime, gives 2.7% (32B) and 2.9% (7B) mean error. Measure
+   acceptance once, then predict other runtimes or hardware from a latency
+   profile.
+4. **Acceptance does not decay with draft position.** It is flat or slightly
    rising: a draft that has matched so far tends to keep matching.
    [Figure](docs/acceptance_by_position.png).
-4. **Lossless in exact arithmetic, not bit-exact in bf16.** Greedy speculative
-   output matched target-only output token for token in only 38% (32B) to 59%
-   (7B) of runs; on average the two agree for the first 63–76% of tokens. Scoring
-   `gamma + 1` tokens in one pass rounds differently from one-token decoding, so
-   near-ties between candidate tokens flip. The identical-model sanity check
-   (100% acceptance, identical output) shows the algorithm itself is exact.
-5. **Choosing `gamma` from predictions works.** Picking the `gamma` with the best
-   predicted speedup loses 0.6% of the best measured speedup on average (worst
-   case 2.7%).
+5. **Lossless in exact arithmetic, not bit-exact in bf16.** Greedy speculative
+   output matched target-only output token for token in 38–72% of runs; on
+   average the two agree for the first 63–84% of tokens. Scoring `gamma + 1`
+   tokens in one pass rounds differently from one-token decoding, so near-ties
+   flip. The identical-model sanity check (100% acceptance, identical output)
+   shows the algorithm itself is exact.
+6. **Choosing `gamma` from predictions works.** Picking the `gamma` with the
+   best predicted speedup loses 1.1% of the best measured speedup on average
+   (worst case 5.2%).
 
-Per-`gamma` curves for the 32B pair (the 7B pair is
-[here](docs/validation_0.5b_7b.png)):
+Per-`gamma` curves for the 32B pair with CUDA graphs (others:
+[32B eager](docs/validation_0.5b_32b.png), [7B eager](docs/validation_0.5b_7b.png),
+[7B graphs](docs/validation_0.5b_7b_graphs.png)):
 
-![Validation, 0.5B to 32B](docs/validation_0.5b_32b.png)
-
-<!-- GRAPH_SECTION -->
+![Validation, 0.5B to 32B with CUDA graphs](docs/validation_0.5b_32b_graphs.png)
 
 ## Reproducing the GPU benchmark
 
@@ -254,6 +270,10 @@ How the harness works:
 
 - Batch size 1 on the GPU side. Batched serving changes the latency model; the
   roofline model covers this, but it is not validated against measurements.
+- CUDA-graph mode depends on transformers internals: in 5.x, `StaticCache`
+  writes at an internal counter that the harness has to rewind on rollback.
+  Other versions may behave differently. The built-in teacher-forced check
+  refuses to time a compiled path that disagrees with eager mode.
 - Acceptance is assumed independent of `gamma` and of the generation step. It
   depends on the draft position, which is modelled.
 - Single-sequence drafting only. Tree drafting (SpecInfer, Medusa, EAGLE) would

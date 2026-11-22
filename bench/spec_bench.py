@@ -183,18 +183,44 @@ class Runner:
     from Python. Rollback in graph mode only moves the write position: slots
     past it are masked out by ``cache_position`` and overwritten later.
     Prefill always runs eagerly (variable length).
+
+    Token ids and positions are written into per-shape buffers marked as static
+    addresses before every call. Passing freshly allocated tensors instead let
+    replays compute with stale positions (corrupted KV writes, lower acceptance,
+    occasional out-of-bounds asserts); ``teacher_forced_mismatch`` guards
+    against any regression of this kind before a run is timed.
     """
 
-    def __init__(self, model: Any, graphs: bool, max_len: int, device: str, dtype: torch.dtype):
+    def __init__(
+        self,
+        model: Any,
+        graphs: bool,
+        max_len: int,
+        device: str,
+        dtype: torch.dtype,
+        compile_mode: str | None = "reduce-overhead",
+    ):
         self.model = model
         self.graphs = graphs
         self.device = device
         self.length = 0
         self.max_len = max_len
         self.cache: Any = None
+        # Per-shape static input buffers, updated in place before each call so a
+        # replayed graph always reads the current token ids and positions.
+        self._bufs: dict[int, tuple[torch.Tensor, torch.Tensor]] = {}
         if graphs:
             self.cache = _static_cache(model, max_len, device, dtype)
-            self.step = torch.compile(model.forward, mode="reduce-overhead", dynamic=False)
+            self.step = torch.compile(model.forward, mode=compile_mode, dynamic=False)
+
+    def _buffers(self, k: int) -> tuple[torch.Tensor, torch.Tensor]:
+        if k not in self._bufs:
+            ids = torch.zeros((1, k), dtype=torch.long, device=self.device)
+            pos = torch.zeros((k,), dtype=torch.long, device=self.device)
+            torch._dynamo.mark_static_address(ids)
+            torch._dynamo.mark_static_address(pos)
+            self._bufs[k] = (ids, pos)
+        return self._bufs[k]
 
     def reset(self) -> None:
         self.length = 0
@@ -223,13 +249,18 @@ class Runner:
         k = len(tokens)
         if self.length + k > self.max_len:
             raise RuntimeError(f"KV cache overflow ({self.length + k} > {self.max_len})")
-        x = torch.tensor([tokens], device=self.device)
         if self.graphs:
-            pos = torch.arange(self.length, self.length + k, device=self.device)
+            ids_buf, pos_buf = self._buffers(k)
+            ids_buf[0].copy_(torch.tensor(tokens, dtype=torch.long))
+            pos_buf.copy_(torch.arange(self.length, self.length + k, dtype=torch.long))
             out = self.step(
-                input_ids=x, past_key_values=self.cache, cache_position=pos, use_cache=True
+                input_ids=ids_buf,
+                past_key_values=self.cache,
+                cache_position=pos_buf,
+                use_cache=True,
             )
         else:
+            x = torch.tensor([tokens], device=self.device)
             out = self.model(x, past_key_values=self.cache, use_cache=True)
         self.length += k
         logits: torch.Tensor = out.logits[0]
@@ -253,6 +284,43 @@ class Runner:
                 self.prefill(ids)
                 self.forward([1000] * k)
         self.reset()
+
+
+@torch.inference_mode()
+def teacher_forced_mismatch(
+    reference: Runner, candidate: Runner, ids: torch.Tensor, n: int, shapes: list[int]
+) -> tuple[float, float]:
+    """Check a runner's logits against an eager reference.
+
+    Decodes ``n`` greedy tokens with ``reference`` one at a time, then replays
+    them teacher-forced through both runners in chunks cycling through
+    ``shapes`` (the verification shapes the decode loop uses). Returns the
+    fraction of positions whose argmax disagrees with the greedy reference,
+    for the reference itself (bf16 batching noise) and for the candidate.
+    """
+    reference.prefill(ids[:, :-1])
+    pending, ref = [int(ids[0, -1])], []
+    for _ in range(n):
+        t = int(torch.argmax(reference.forward(pending)[-1]))
+        ref.append(t)
+        pending = [t]
+    inputs = [int(ids[0, -1]), *ref[:-1]]
+
+    def rate(runner: Runner) -> float:
+        runner.prefill(ids[:, :-1])
+        i = j = bad = 0
+        while i < len(inputs):
+            k = shapes[j % len(shapes)]
+            j += 1
+            chunk = inputs[i : i + k]
+            if len(chunk) < k:  # tail: single steps keep to captured shapes
+                chunk = inputs[i : i + 1]
+            pred = torch.argmax(runner.forward(chunk), dim=-1).tolist()
+            bad += sum(a != b for a, b in zip(pred, ref[i : i + len(chunk)], strict=True))
+            i += len(chunk)
+        return bad / len(inputs)
+
+    return rate(reference), rate(candidate)
 
 
 # --------------------------------------------------------------------------
@@ -496,6 +564,13 @@ def main() -> None:
         help="StaticCache + torch.compile(mode='reduce-overhead') for both models",
     )
     ap.add_argument("--max-cache", type=int, default=1280, help="static KV-cache length")
+    ap.add_argument(
+        "--compile-mode",
+        default="reduce-overhead",
+        choices=["reduce-overhead", "default"],
+        help="torch.compile mode for --cuda-graphs ('default' = Inductor without CUDA graphs)",
+    )
+    ap.add_argument("--check-only", action="store_true", help="run the graph check and exit")
     args = ap.parse_args()
 
     if not torch.cuda.is_available() and not args.allow_cpu:
@@ -525,8 +600,9 @@ def main() -> None:
         for knob in ("cache_size_limit", "recompile_limit"):
             if hasattr(dynamo.config, knob):
                 setattr(dynamo.config, knob, 64)
-    t_run = Runner(target, graphs, args.max_cache, device, dtype)
-    d_run = Runner(draft, graphs, args.max_cache, device, dtype)
+    mode = None if args.compile_mode == "default" else args.compile_mode
+    t_run = Runner(target, graphs, args.max_cache, device, dtype, mode)
+    d_run = Runner(draft, graphs, args.max_cache, device, dtype, mode)
 
     result: dict[str, Any] = {
         "meta": {
@@ -556,6 +632,21 @@ def main() -> None:
         t_run.warmup(list(range(1, max(gammas) + 2)))
         d_run.warmup([1, 2])
         log(f"  graphs ready in {time.perf_counter() - t0:.0f}s")
+
+        # Never time a compiled path that computes different logits.
+        probe = encode(tok, PROMPTS["code"][0], device)
+        for name, model, run, shapes in (
+            ("target", target, t_run, list(range(1, max(gammas) + 2))),
+            ("draft", draft, d_run, [1, 2]),
+        ):
+            eager = Runner(model, False, args.max_cache, device, dtype)
+            base_rate, rate = teacher_forced_mismatch(eager, run, probe, 64, shapes)
+            log(f"  {name} graph check: argmax mismatch {rate:.1%} (eager chunked {base_rate:.1%})")
+            result["meta"][f"{name}_graph_mismatch"] = rate
+            if rate > base_rate + 0.05:
+                raise SystemExit(f"{name}: compiled path disagrees with eager; refusing to time it")
+        if args.check_only:
+            return
 
     # Warm-up (CUDA context, cuBLAS handles, allocator).
     warm = encode(tok, "Hello!", device)

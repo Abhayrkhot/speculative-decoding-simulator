@@ -29,6 +29,7 @@ from .latency import (
     LinearLatency,
     ModelSpec,
     RooflineLatency,
+    TabulatedLatency,
 )
 from .simulate import SimulationResult, simulate
 
@@ -45,6 +46,7 @@ __all__ = [
     "PositionalAcceptance",
     "RooflineLatency",
     "SimulationResult",
+    "TabulatedLatency",
     "__version__",
     "expected_cycle_time",
     "expected_speedup",

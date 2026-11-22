@@ -13,6 +13,7 @@ from specsim import (
     LinearLatency,
     PositionalAcceptance,
     RooflineLatency,
+    TabulatedLatency,
     expected_speedup,
     optimal_gamma,
 )
@@ -40,6 +41,17 @@ def test_linear_fit_clamps_negative_slope() -> None:
     fit = LinearLatency.fit({1: 0.02, 2: 0.0199, 4: 0.0198}, {1: 0.003})
     assert fit.target_per_token_s == 0.0
     assert fit.draft_per_token_s == 0.0
+
+
+def test_tabulated_latency_interpolates_and_extrapolates() -> None:
+    lat = TabulatedLatency.from_profiles({1: 0.020, 4: 0.020, 8: 0.024}, {1: 0.004})
+    assert lat.target(1) == pytest.approx(0.020)
+    assert lat.target(6) == pytest.approx(0.022)
+    assert lat.target(12) == pytest.approx(0.028)  # slope of last segment
+    assert lat.draft(3) == pytest.approx(0.004)
+    assert lat.with_overhead(0.001).target(1) == pytest.approx(0.021)
+    with pytest.raises(ValueError):
+        TabulatedLatency.from_profiles({}, {1: 0.004})
 
 
 def test_roofline_memory_bound_at_batch_one() -> None:

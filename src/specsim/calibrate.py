@@ -4,9 +4,10 @@ Input is the JSON written by ``bench/spec_bench.py``: a forward-latency profile
 for both models plus per-cycle acceptance traces and wall-clock times for
 plain decoding (``gamma=0``) and speculative decoding at several ``gamma``.
 
-``validate`` predicts each measured speedup *out of sample*: the acceptance
+```validate`` predicts each measured speedup *out of sample*: the acceptance
 model for ``(task, temperature, gamma)`` is fitted only on traces recorded at
-the other gammas, latency comes from the standalone forward-pass profile, and
+the other gammas, latency is interpolated from the standalone forward-pass
+profile, and
 host-side overhead per forward pass is estimated from the ``gamma=0`` runs
 alone. Nothing is fitted to the speculative wall-clock times being predicted.
 """
@@ -22,7 +23,7 @@ from typing import Any
 import numpy as np
 
 from .acceptance import AcceptanceModel, IIDAcceptance, PositionalAcceptance
-from .latency import LinearLatency
+from .latency import LinearLatency, TabulatedLatency
 from .simulate import simulate
 
 __all__ = [
@@ -64,6 +65,19 @@ def fit_latency(res: Results, context: int | None = None) -> tuple[LinearLatency
     target = {int(k): ms / 1e3 for k, ms in prof["target"].items()}
     draft = {int(k): ms / 1e3 for k, ms in prof["draft"].items()}
     return LinearLatency.fit(target, draft), ctx
+
+
+def tabulated_latency(res: Results, context: int | None = None) -> tuple[TabulatedLatency, int]:
+    """Interpolated latency from the measured profile closest to ``context`` tokens."""
+    _, ctx = fit_latency(res, context)
+    prof = res["latency_ms"][str(ctx)]
+    return (
+        TabulatedLatency.from_profiles(
+            {int(k): ms / 1e3 for k, ms in prof["target"].items()},
+            {int(k): ms / 1e3 for k, ms in prof["draft"].items()},
+        ),
+        ctx,
+    )
 
 
 def _groups(res: Results) -> dict[tuple[str, float], list[dict[str, Any]]]:
@@ -180,7 +194,7 @@ def validate(
     if acceptance not in ("positional", "iid"):
         raise ValueError("acceptance must be 'positional' or 'iid'")
     res = load_results(path)
-    lat, ctx = fit_latency(res)
+    lat, ctx = tabulated_latency(res)
     measured = measured_speedups(res)
     groups = _groups(res)
 
@@ -192,12 +206,7 @@ def validate(
 
         # Host overhead per forward (sampling, Python, sync), from gamma=0 only.
         overhead = max(_per_token(base_runs) - lat.target(1), 0.0)
-        lat_o = LinearLatency(
-            lat.target_fixed_s + overhead,
-            lat.target_per_token_s,
-            lat.draft_fixed_s + overhead,
-            lat.draft_per_token_s,
-        )
+        lat_o = lat.with_overhead(overhead)
 
         cyc = _cycles(runs, exclude_gamma=gamma)
         if not cyc:
@@ -217,6 +226,7 @@ def validate(
                 "predicted": pred,
                 "error_pct": 100.0 * (pred - meas) / meas,
                 "alpha_fit": pos.mean_alpha,
+                "host_overhead_ms": overhead * 1e3,
                 "tokens_per_cycle_measured": (
                     sum(a + 1 for _, a in own) / len(own) if own else float("nan")
                 ),

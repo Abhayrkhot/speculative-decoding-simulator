@@ -10,7 +10,7 @@ A speculative decoding cycle with ``gamma`` draft tokens costs
 ``gamma * draft(1, B) + target(gamma + 1, B)``; plain decoding costs
 ``target(1, B)`` per token.
 
-Three models are provided, from simplest to most physical:
+Four models are provided, from simplest to most physical:
 
 ``ConstantLatency``
     A forward pass costs the same regardless of how many tokens it processes.
@@ -20,6 +20,8 @@ Three models are provided, from simplest to most physical:
     ``t(k) = fixed + per_token * k * batch``. Fitted from measured profiles
     (see :mod:`specsim.calibrate`); captures kernel-launch overhead and the
     growing cost of verifying more tokens.
+``TabulatedLatency``
+    Interpolates a measured profile directly; used for validation.
 ``RooflineLatency``
     ``t = overhead + max(bytes / bandwidth, flops / peak)`` from model size,
     KV-cache size and hardware specs. Shows the transition from memory-bound to
@@ -44,6 +46,7 @@ __all__ = [
     "LinearLatency",
     "ModelSpec",
     "RooflineLatency",
+    "TabulatedLatency",
 ]
 
 
@@ -137,6 +140,61 @@ class LinearLatency:
         tf, tp = cls._fit_line(target_profile)
         df, dp = cls._fit_line(draft_profile)
         return cls(target_fixed_s=tf, target_per_token_s=tp, draft_fixed_s=df, draft_per_token_s=dp)
+
+
+def _interp(profile: tuple[tuple[int, float], ...], n: float) -> float:
+    ks = np.array([k for k, _ in profile], dtype=float)
+    ts = np.array([t for _, t in profile], dtype=float)
+    if len(ks) == 1:
+        return float(ts[0])
+    if n <= ks[-1]:
+        return float(np.interp(n, ks, ts))
+    slope = max((ts[-1] - ts[-2]) / (ks[-1] - ks[-2]), 0.0)
+    return float(ts[-1] + slope * (n - ks[-1]))
+
+
+@dataclass(frozen=True)
+class TabulatedLatency:
+    """Piecewise-linear interpolation of a measured ``{k: seconds}`` profile.
+
+    The most faithful model when a profile is available: it reproduces the
+    measured cost of verifying ``k`` tokens exactly, including non-linear steps
+    from kernel tile sizes. Beyond the largest measured ``k`` it extrapolates
+    linearly. ``batch > 1`` is approximated as ``k * batch`` tokens.
+    """
+
+    target_profile: tuple[tuple[int, float], ...]
+    draft_profile: tuple[tuple[int, float], ...]
+
+    def __post_init__(self) -> None:
+        for name in ("target_profile", "draft_profile"):
+            prof = getattr(self, name)
+            if not prof:
+                raise ValueError(f"{name} is empty")
+            if any(t <= 0 for _, t in prof):
+                raise ValueError(f"{name} times must be positive")
+
+    @classmethod
+    def from_profiles(
+        cls, target: Mapping[int, float], draft: Mapping[int, float]
+    ) -> TabulatedLatency:
+        return cls(
+            tuple(sorted((int(k), float(v)) for k, v in target.items())),
+            tuple(sorted((int(k), float(v)) for k, v in draft.items())),
+        )
+
+    def with_overhead(self, seconds: float) -> TabulatedLatency:
+        """Add a fixed per-forward cost (e.g. host-side sampling) to both models."""
+        return TabulatedLatency(
+            tuple((k, t + seconds) for k, t in self.target_profile),
+            tuple((k, t + seconds) for k, t in self.draft_profile),
+        )
+
+    def target(self, k: int, batch: int = 1) -> float:
+        return _interp(self.target_profile, k * batch)
+
+    def draft(self, k: int, batch: int = 1) -> float:
+        return _interp(self.draft_profile, k * batch)
 
 
 @dataclass(frozen=True)

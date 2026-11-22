@@ -184,11 +184,16 @@ class Runner:
     past it are masked out by ``cache_position`` and overwritten later.
     Prefill always runs eagerly (variable length).
 
-    Token ids and positions are written into per-shape buffers marked as static
-    addresses before every call. Passing freshly allocated tensors instead let
-    replays compute with stale positions (corrupted KV writes, lower acceptance,
-    occasional out-of-bounds asserts); ``teacher_forced_mismatch`` guards
-    against any regression of this kind before a run is timed.
+    Token ids and positions go through per-shape buffers marked as static
+    addresses, so every replay reads its inputs from fixed memory.
+
+    Rollback caveat: transformers >= 5 ``StaticLayer`` writes new keys/values
+    at an internal counter (``cumulative_length``), not at ``cache_position``.
+    Unless that counter is rewound too, tokens after a rejected draft are
+    written past the stale entries and attention reads the rejected tokens'
+    KV (and the counter eventually runs off the end of the cache).
+    ``_set_write_position`` rewinds it; ``teacher_forced_mismatch`` checks
+    rollback against eager mode before a run is timed.
     """
 
     def __init__(
@@ -222,10 +227,20 @@ class Runner:
             self._bufs[k] = (ids, pos)
         return self._bufs[k]
 
+    def _set_write_position(self, length: int) -> None:
+        # transformers >= 5 StaticLayer writes at an internal device counter
+        # (``cumulative_length``) and ignores ``cache_position``; keep it in
+        # sync with our length or rolled-back slots are never overwritten.
+        for layer in getattr(self.cache, "layers", []):
+            counter = getattr(layer, "cumulative_length", None)
+            if isinstance(counter, torch.Tensor):
+                counter.fill_(length)
+
     def reset(self) -> None:
         self.length = 0
         if self.graphs:
             self.cache.reset()
+            self._set_write_position(0)
         else:
             self.cache = None
 
@@ -269,7 +284,9 @@ class Runner:
     def rollback(self, length: int) -> None:
         if length >= self.length:
             return
-        if not self.graphs:
+        if self.graphs:
+            self._set_write_position(length)
+        else:
             rollback(self.cache, length)
         self.length = length
 
@@ -294,7 +311,9 @@ def teacher_forced_mismatch(
 
     Decodes ``n`` greedy tokens with ``reference`` one at a time, then replays
     them teacher-forced through both runners in chunks cycling through
-    ``shapes`` (the verification shapes the decode loop uses). Returns the
+    ``shapes`` (the verification shapes the decode loop uses). After every
+    chunk it also appends decoy tokens and rolls them back, as a rejected
+    draft would, so cache-rollback bugs show up as mismatches. Returns the
     fraction of positions whose argmax disagrees with the greedy reference,
     for the reference itself (bf16 batching noise) and for the candidate.
     """
@@ -318,6 +337,9 @@ def teacher_forced_mismatch(
             pred = torch.argmax(runner.forward(chunk), dim=-1).tolist()
             bad += sum(a != b for a, b in zip(pred, ref[i : i + len(chunk)], strict=True))
             i += len(chunk)
+            decoy = min(2, max(shapes))
+            runner.forward([1000 + j] * decoy)  # a rejected draft...
+            runner.rollback(runner.length - decoy)  # ...rolled back
         return bad / len(inputs)
 
     return rate(reference), rate(candidate)

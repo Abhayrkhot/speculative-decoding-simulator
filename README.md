@@ -237,10 +237,14 @@ How the harness works:
   `torch.compile(mode="reduce-overhead")`, with one CUDA graph per decode shape.
   Rollback only moves the write position; stale slots are masked out.
 - Before timing a compiled path, the harness replays a greedy continuation
-  teacher-forced through every verification shape and compares each argmax
-  with eager mode. If they disagree, it refuses to run. This check caught a
-  real bug: graph replays reading stale positions, fixed by feeding inputs
-  through static buffers.
+  teacher-forced through every verification shape. It adds and rolls back
+  decoy tokens the way rejected drafts would, and compares each argmax with
+  eager mode. If they disagree, it refuses to run.
+- That check exists because of a real bug. In transformers 5.x, `StaticCache`
+  writes at an internal counter and ignores `cache_position`, so rolling back
+  without rewinding that counter makes attention read rejected tokens' KV.
+  On the 7B pair, acceptance fell from 0.94 to 0.78 and greedy output never
+  matched target-only output. The harness now rewinds the counter.
 - Every greedy speculative output is compared token-for-token with the
   target-only output.
 - Sanity check: with the same model as draft and target, acceptance must be

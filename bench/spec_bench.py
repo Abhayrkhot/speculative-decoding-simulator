@@ -203,6 +203,7 @@ class Runner:
         else:
             self.cache = None
 
+    @torch.inference_mode()
     def prefill(self, ids: torch.Tensor) -> None:
         self.reset()
         n = int(ids.shape[1])
@@ -241,6 +242,7 @@ class Runner:
             rollback(self.cache, length)
         self.length = length
 
+    @torch.inference_mode()
     def warmup(self, shapes: list[int], ctx: int = 64) -> None:
         """Compile and capture every decode shape before anything is timed."""
         if not self.graphs:

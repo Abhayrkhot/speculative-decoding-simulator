@@ -76,6 +76,18 @@ def test_validate_predicts_out_of_sample(bench_results: dict[str, Any]) -> None:
     assert rep["summary"]["mae_pct"] <= iid["summary"]["mae_pct"]
 
 
+def test_cycle_overhead_is_learned_from_other_gammas() -> None:
+    from .conftest import synthetic_results
+
+    res = synthetic_results(seed=3, cycle_overhead_s=0.006)
+    rep = validate(res, trials=300)
+    s = rep["summary"]
+    # Residual error is acceptance sampling noise (6 prompts x 160 tokens).
+    assert s["mae_pct"] < 6.0, rep["rows"]
+    assert s["mae_raw_pct"] > s["mae_pct"] + 5.0
+    assert all(r["cycle_overhead_ms"] == pytest.approx(6.0, rel=0.25) for r in rep["rows"])
+
+
 def test_load_rejects_wrong_json(tmp_path: Path) -> None:
     p = tmp_path / "x.json"
     p.write_text("{}")

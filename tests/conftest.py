@@ -21,7 +21,9 @@ TRUE_ALPHAS = {
 HOST_OVERHEAD_S = 0.001
 
 
-def synthetic_results(seed: int = 0, gammas: tuple[int, ...] = (0, 1, 2, 4, 6)) -> dict[str, Any]:
+def synthetic_results(
+    seed: int = 0, gammas: tuple[int, ...] = (0, 1, 2, 4, 6), cycle_overhead_s: float = 0.0
+) -> dict[str, Any]:
     """Fake ``spec_bench`` output generated from a known latency/acceptance model."""
     rng = np.random.default_rng(seed)
     lat = TRUE_LATENCY
@@ -42,6 +44,8 @@ def synthetic_results(seed: int = 0, gammas: tuple[int, ...] = (0, 1, 2, 4, 6)) 
                     hits = rng.random(k) < a[:k]
                     n_acc = int(np.cumprod(hits).sum()) if k else 0
                     t += k * (lat.draft(1) + HOST_OVERHEAD_S) + lat.target(k + 1) + HOST_OVERHEAD_S
+                    if gamma:
+                        t += cycle_overhead_s
                     produced += n_acc + 1
                     cycles.append([k, n_acc])
                 runs.append(

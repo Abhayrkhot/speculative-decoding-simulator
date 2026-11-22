@@ -200,12 +200,14 @@ def cmd_validate(args: argparse.Namespace) -> int:
         print(json.dumps(rep, indent=2))
         return 0
     _print_table(
-        rep["rows"], ["task", "temperature", "gamma", "measured", "predicted", "error_pct"]
+        rep["rows"],
+        ["task", "temperature", "gamma", "measured", "predicted", "error_pct", "predicted_raw"],
     )
     s = rep["summary"]
     print(
-        f"\nmean |error| {s['mae_pct']:.1f}%  max |error| {s['max_abs_error_pct']:.1f}%  "
-        f"best measured {s['best_measured']:.2f}x"
+        f"\nmean |error| {s['mae_pct']:.1f}% (max {s['max_abs_error_pct']:.1f}%); "
+        f"without per-cycle overhead {s['mae_raw_pct']:.1f}% (max "
+        f"{s['max_abs_error_raw_pct']:.1f}%); best measured {s['best_measured']:.2f}x"
     )
     return 0
 

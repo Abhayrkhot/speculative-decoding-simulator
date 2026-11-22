@@ -212,8 +212,22 @@ def validate(
     acceptance: str = "positional",
     trials: int = 500,
     seed: int = 0,
+    cycle_overhead: bool = True,
 ) -> dict[str, Any]:
-    """Out-of-sample prediction of every measured speedup; see module docstring."""
+    """Out-of-sample prediction of every measured speedup; see module docstring.
+
+    Two predictions are reported per configuration:
+
+    ``predicted_raw``
+        Uses no speculative timing data at all: profile latency, host overhead
+        from ``gamma=0`` runs, and cross-fitted acceptance.
+    ``predicted``
+        Additionally charges a fixed host cost per draft-verify cycle
+        (verification bookkeeping, cache rollback), estimated from the
+        speculative runs at the *other* gammas of the same temperature. Still
+        out of sample for the gamma being predicted. Disable with
+        ``cycle_overhead=False``.
+    """
     if acceptance not in ("positional", "iid"):
         raise ValueError("acceptance must be 'positional' or 'iid'")
     res = load_results(path)
@@ -221,40 +235,65 @@ def validate(
     measured = measured_speedups(res)
     groups = _groups(res)
 
-    rows: list[dict[str, Any]] = []
-    for (task, temp, gamma), meas in sorted(measured.items()):
-        runs = groups[(task, temp)]
+    # Pass 1: zero-overhead prediction for every speculative run.
+    per_run: list[dict[str, Any]] = []
+    base_per_token: dict[tuple[str, float], float] = {}
+    host_overhead: dict[tuple[str, float], float] = {}
+    for (task, temp), runs in groups.items():
         base_runs = [r for r in runs if r["gamma"] == 0]
-        spec_runs = [r for r in runs if r["gamma"] == gamma]
-
+        if not base_runs:
+            continue
         # Host overhead per forward (sampling, Python, sync), from gamma=0 only.
         overhead = max(_per_token(base_runs) - lat.target(1), 0.0)
         lat_o = lat.with_overhead(overhead)
-
-        # Cross-fit: predict each prompt's run from the other prompts' traces.
-        pred_time = 0.0
-        pred_tokens = 0
-        alphas: list[float] = []
-        for i, run in enumerate(spec_runs):
+        base_per_token[(task, temp)] = lat_o.target(1)
+        host_overhead[(task, temp)] = overhead
+        for i, run in enumerate(r for r in runs if r["gamma"] > 0):
+            gamma = int(run["gamma"])
+            # Cross-fit: acceptance from other prompts at other gammas.
             cyc = _cycles(runs, exclude_gamma=gamma, exclude_prompt=run.get("prompt_id"))
             if not cyc:
                 cyc = _cycles(runs, exclude_gamma=gamma)
             if not cyc:
-                break
+                continue
             pos = PositionalAcceptance.from_traces(cyc)
-            alphas.append(pos.mean_alpha)
             acc: AcceptanceModel = (
                 pos if acceptance == "positional" else IIDAcceptance(pos.mean_alpha)
             )
             n = max(2, int(run["n_new"]))
             sim = simulate(acc, gamma, lat_o, tokens=n, trials=trials, seed=seed + i)
-            pred_time += sim.speculative_time
-            pred_tokens += n
-        if not alphas:
-            continue
-        pred = lat_o.target(1) * pred_tokens / pred_time
+            per_run.append(
+                {
+                    "task": task,
+                    "temperature": temp,
+                    "gamma": gamma,
+                    "tokens": n,
+                    "alpha": pos.mean_alpha,
+                    "pred_time": sim.speculative_time,
+                    "pred_cycles": n / sim.tokens_per_cycle,
+                    "meas_time": float(run["decode_s"]),
+                    "meas_cycles": len(run["cycles"]),
+                }
+            )
 
-        own = _cycles(spec_runs)
+    # Pass 2: per-cycle overhead from other gammas, then aggregate per row.
+    rows: list[dict[str, Any]] = []
+    for (task, temp, gamma), meas in sorted(measured.items()):
+        mine = [
+            r for r in per_run if (r["task"], r["temperature"], r["gamma"]) == (task, temp, gamma)
+        ]
+        if not mine:
+            continue
+        others = [r for r in per_run if r["temperature"] == temp and r["gamma"] != gamma]
+        c_over = 0.0
+        if cycle_overhead and others:
+            resid = sum(r["meas_time"] - r["pred_time"] for r in others)
+            c_over = max(resid / sum(r["meas_cycles"] for r in others), 0.0)
+        tokens = sum(r["tokens"] for r in mine)
+        base = base_per_token[(task, temp)] * tokens
+        raw = base / sum(r["pred_time"] for r in mine)
+        pred = base / sum(r["pred_time"] + c_over * r["pred_cycles"] for r in mine)
+        own = _cycles([r for r in groups[(task, temp)] if r["gamma"] == gamma])
         rows.append(
             {
                 "task": task,
@@ -263,15 +302,23 @@ def validate(
                 "measured": meas,
                 "predicted": pred,
                 "error_pct": 100.0 * (pred - meas) / meas,
-                "alpha_fit": float(np.mean(alphas)),
-                "host_overhead_ms": overhead * 1e3,
+                "predicted_raw": raw,
+                "error_raw_pct": 100.0 * (raw - meas) / meas,
+                "alpha_fit": float(np.mean([r["alpha"] for r in mine])),
+                "host_overhead_ms": host_overhead[(task, temp)] * 1e3,
+                "cycle_overhead_ms": c_over * 1e3,
                 "tokens_per_cycle_measured": (
                     sum(a + 1 for _, a in own) / len(own) if own else float("nan")
                 ),
             }
         )
 
-    errs = np.array([abs(r["error_pct"]) for r in rows]) if rows else np.array([np.nan])
+    def stats(key: str) -> tuple[float, float]:
+        e = np.array([abs(r[key]) for r in rows]) if rows else np.array([np.nan])
+        return float(np.mean(e)), float(np.max(e))
+
+    mae, mx = stats("error_pct")
+    mae_raw, mx_raw = stats("error_raw_pct")
     best = max(rows, key=lambda r: r["measured"]) if rows else None
     return {
         "meta": res["meta"],
@@ -280,8 +327,10 @@ def validate(
         "rows": rows,
         "summary": {
             "n": len(rows),
-            "mae_pct": float(np.mean(errs)),
-            "max_abs_error_pct": float(np.max(errs)),
+            "mae_pct": mae,
+            "max_abs_error_pct": mx,
+            "mae_raw_pct": mae_raw,
+            "max_abs_error_raw_pct": mx_raw,
             "best_measured": best["measured"] if best else float("nan"),
             "best_config": (
                 {k: best[k] for k in ("task", "temperature", "gamma")} if best else None
